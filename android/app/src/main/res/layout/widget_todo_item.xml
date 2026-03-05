@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/todo_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:background="@drawable/widget_item_bg">
+
+    <ImageView
+        android:id="@+id/todo_icon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:src="@android:drawable/radiobutton_off_background"
+        android:layout_gravity="center_vertical"/>
+
+    <TextView
+        android:id="@+id/todo_item_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:layout_gravity="center_vertical"/>
+
+</LinearLayout>

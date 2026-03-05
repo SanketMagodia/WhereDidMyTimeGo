@@ -4,9 +4,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/app_provider.dart';
 import 'theme/app_theme.dart';
-import 'screens/home_screen.dart';
 import 'models/log_entry_model.dart';
 import 'services/notification_service.dart';
+import 'screens/splash_screen.dart';
 
 // ─── Background notification handler ─────────────────────────────────────────
 // Must be a top-level function (not a class method) to run in background isolate.
@@ -23,6 +23,10 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
       'pending_log_time',
       DateTime.now().millisecondsSinceEpoch,
     );
+    // MUST cancel the notification ID here so Android clears the UI loading spinner
+    FlutterLocalNotificationsPlugin().cancel(
+      id: 0,
+    ); // 0 corresponds to _logNotifId
   }
 }
 
@@ -48,24 +52,25 @@ void main() async {
         _providerRef = p;
         return p;
       },
-      child: const TimelogApp(),
+      child: const WDMTGApp(),
     ),
   );
 }
 
-class TimelogApp extends StatelessWidget {
-  const TimelogApp({super.key});
+class WDMTGApp extends StatelessWidget {
+  const WDMTGApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
+
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'WDMTG',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: provider.themeMode,
-      home: const GlobalPromptWrapper(child: HomeScreen()),
-      debugShowCheckedModeBanner: false,
+      home: const SplashScreen(),
     );
   }
 }

@@ -13,7 +13,7 @@ class NotificationService {
 
   static const int _logNotifId = 1;
   static const String _replyActionId = 'log_reply';
-  static const String _channelId = 'wdmtg_log';
+  static const String _channelId = 'wdmtg_log_v2'; // Bumped to apply new sound
   static const String _channelName = 'WDMTG Time Log';
   static const String _channelDesc =
       'Periodic reminders to log what you have been doing.';
@@ -63,6 +63,7 @@ class NotificationService {
       priority: Priority.high,
       enableVibration: true,
       playSound: true,
+      sound: const RawResourceAndroidNotificationSound('clock'),
       ongoing: false,
       autoCancel: true,
       actions: [

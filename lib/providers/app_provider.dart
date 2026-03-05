@@ -8,9 +8,10 @@ import '../models/task_model.dart';
 import '../models/log_entry_model.dart';
 import '../models/todo_model.dart';
 import '../services/notification_service.dart';
+import '../services/widget_sync_service.dart';
 import 'package:file_picker/file_picker.dart';
 
-class AppProvider extends ChangeNotifier {
+class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<TaskModel> _tasks = [];
   List<LogEntry> _logs = [];
   List<TodoModel> _todos = [];
@@ -34,14 +35,51 @@ class AppProvider extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
 
   AppProvider() {
+    WidgetsBinding.instance.addObserver(this);
     _init();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingNotifications();
+    }
   }
 
   Future<void> _init() async {
     await _loadSettings();
+    await _loadPromptState();
     await _loadData();
     await _checkPendingNotifications();
     _startTimer();
+  }
+
+  Future<void> _savePromptState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isPromptOwed', _isPromptOwed);
+    if (_notificationShownAt != null) {
+      await prefs.setInt(
+        'notifShownAt',
+        _notificationShownAt!.millisecondsSinceEpoch,
+      );
+    } else {
+      await prefs.remove('notifShownAt');
+    }
+  }
+
+  Future<void> _loadPromptState() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isPromptOwed = prefs.getBool('isPromptOwed') ?? false;
+    final ms = prefs.getInt('notifShownAt');
+    if (ms != null)
+      _notificationShownAt = DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
   Future<void> _checkPendingNotifications() async {
@@ -112,6 +150,9 @@ class AppProvider extends ChangeNotifier {
         _tasks.sort((a, b) => a.startTime.compareTo(b.startTime));
         _logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
         notifyListeners();
+
+        // Update widgets purely on startup so they fill in right away
+        WidgetSyncService.updateWidgets(_tasks, _todos);
       }
     } catch (e) {
       debugPrint("Error loading data: $e");
@@ -127,6 +168,9 @@ class AppProvider extends ChangeNotifier {
         'todos': _todos.map((e) => e.toJson()).toList(),
       };
       await file.writeAsString(json.encode(data));
+
+      // Update Android Home Widgets
+      WidgetSyncService.updateWidgets(_tasks, _todos);
     } catch (e) {
       debugPrint("Error saving data: $e");
     }
@@ -179,6 +223,7 @@ class AppProvider extends ChangeNotifier {
 
       _isPromptOwed = true;
       _notificationShownAt = now;
+      _savePromptState();
 
       // Find ongoing task
       String? currentTaskTitle;
@@ -201,6 +246,8 @@ class AppProvider extends ChangeNotifier {
 
   void clearPrompt() {
     _isPromptOwed = false;
+    _notificationShownAt = null;
+    _savePromptState();
     notifyListeners();
   }
 
@@ -258,9 +305,21 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> addLog(LogEntry entry) async {
-    _insertLog(entry);
+    LogEntry finalEntry = entry;
+    // If answering a prompt, force the log into the exact slot that was prompted
+    if (_isPromptOwed && _notificationShownAt != null && !entry.isSleep) {
+      finalEntry = LogEntry(
+        id: entry.id,
+        timestamp: _notificationShownAt!,
+        text: entry.text,
+        isSleep: entry.isSleep,
+      );
+    }
+
+    _insertLog(finalEntry);
     _isPromptOwed = false;
     _notificationShownAt = null; // answered — no auto-continue
+    _savePromptState();
     await NotificationService.instance.cancelLogNotification();
     notifyListeners();
     await _saveData();

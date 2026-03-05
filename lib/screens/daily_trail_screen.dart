@@ -36,8 +36,6 @@ class DailyTrailScreen extends StatefulWidget {
 
 class _DailyTrailScreenState extends State<DailyTrailScreen> {
   final ScrollController _gridScroll = ScrollController();
-  final ScrollController _timeScroll = ScrollController();
-  final ScrollController _logScroll = ScrollController();
 
   DateTime _currentDate = DateTime.now();
   CalendarFormat _calendarFormat = CalendarFormat.week;
@@ -60,8 +58,6 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
   @override
   void dispose() {
     _gridScroll.dispose();
-    _timeScroll.dispose();
-    _logScroll.dispose();
     super.dispose();
   }
 
@@ -268,6 +264,42 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
         ),
       );
 
+  Widget _buildSectionHeader(
+    IconData icon,
+    String title,
+    Color color, {
+    double? width,
+  }) {
+    final c = AppColors.of(context);
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(
+          bottom: BorderSide(color: c.sep, width: 0.5),
+          left: BorderSide(color: c.sep, width: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 10, color: color.withValues(alpha: 0.7)),
+          const SizedBox(width: 4),
+          Text(
+            title,
+            style: TextStyle(
+              color: color.withValues(alpha: 0.9),
+              fontSize: 8.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Grid ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -301,127 +333,140 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
               children: [
                 _buildCalendar(),
                 Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Column(
                     children: [
-                      // Time labels
-                      SizedBox(
-                        width: _tcw,
-                        child: SingleChildScrollView(
-                          controller: _timeScroll,
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: totalH,
-                            child: Stack(
-                              children: List.generate(
-                                25,
-                                (i) => Positioned(
-                                  top: i * 60 * _px - 8,
-                                  left: 0,
-                                  right: 4,
-                                  child: Text(
-                                    '${i.toString().padLeft(2, '0')}:00',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(
-                                      color: AppColors.of(context).muted,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                      // ── Headers ───────────────────────────────────────────
+                      Row(
+                        children: [
+                          _buildSectionHeader(
+                            Icons.access_time_rounded,
+                            'TIME',
+                            AppColors.of(context).muted,
+                            width: _tcw,
+                          ),
+                          Expanded(
+                            child: _buildSectionHeader(
+                              Icons.calendar_today_rounded,
+                              'SCHEDULE',
+                              AppColors.of(context).primary,
                             ),
                           ),
-                        ),
+                          _buildSectionHeader(
+                            Icons.history_rounded,
+                            'TIME LOGS',
+                            AppColors.of(context).gold,
+                            width: 96,
+                          ),
+                        ],
                       ),
-                      // ── Tasks column ───────────────────────────────────
+                      // ── Columns ───────────────────────────────────────────
                       Expanded(
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (n) {
-                            if (_timeScroll.hasClients) {
-                              _timeScroll.jumpTo(n.metrics.pixels);
-                            }
-                            if (_logScroll.hasClients) {
-                              _logScroll.jumpTo(n.metrics.pixels);
-                            }
-                            return false;
-                          },
-                          child: SingleChildScrollView(
-                            controller: _gridScroll,
-                            physics: _taskResizing
-                                ? const NeverScrollableScrollPhysics()
-                                : const ClampingScrollPhysics(),
-                            child: SizedBox(
-                              height: totalH,
-                              child: Stack(
-                                children: [
-                                  // Tap-to-create: covers full grid area
-                                  Positioned.fill(
-                                    child: GestureDetector(
-                                      onTapUp: _onGridTap,
-                                      behavior: HitTestBehavior.opaque,
-                                      child: CustomPaint(
-                                        painter: _GridPainter(),
+                        child: SingleChildScrollView(
+                          controller: _gridScroll,
+                          physics: _taskResizing
+                              ? const NeverScrollableScrollPhysics()
+                              : const ClampingScrollPhysics(),
+                          child: SizedBox(
+                            height: totalH,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: _tcw,
+                                  child: Stack(
+                                    children: List.generate(
+                                      25,
+                                      (i) => Positioned(
+                                        top: i * 60 * _px - 8,
+                                        left: 0,
+                                        right: 4,
+                                        child: Text(
+                                          '${i.toString().padLeft(2, '0')}:00',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            color: AppColors.of(context).muted,
+                                            fontSize: 10,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                  ...tasks.map(
-                                    (t) => _TaskBlock(
-                                      key: ValueKey(t.id),
-                                      task: t,
-                                      allDayTasks: tasks,
-                                      onResizeStart: () => _setResizing(true),
-                                      onResizeEnd: () {
-                                        _setResizing(false);
-                                      },
-                                      onCommit: (updated) {
-                                        final prov = Provider.of<AppProvider>(
-                                          context,
-                                          listen: false,
-                                        );
-                                        prov.updateTask(updated);
-                                        _resolveOverlaps(
-                                          prov,
-                                          updated.id,
-                                          tasks.map((t2) {
-                                            return t2.id == updated.id
-                                                ? updated
-                                                : t2;
-                                          }).toList(),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  if (isSameDay(_currentDate, DateTime.now()))
-                                    _NowLine(),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // ── Logs column ────────────────────────────────────
-                      SizedBox(
-                        width: 96,
-                        child: SingleChildScrollView(
-                          controller: _logScroll,
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: totalH,
-                            child: Stack(
-                              children: [
-                                // subtle grid lines for logs column
-                                Positioned.fill(
-                                  child: CustomPaint(painter: _GridPainter()),
                                 ),
-                                ...logs.map(
-                                  (l) => _HourlyLogBlock(
-                                    key: ValueKey('log_${l.id}'),
-                                    log: l,
-                                    intervalMinutes: intervalMinutes,
+                                Expanded(
+                                  child: Stack(
+                                    children: [
+                                      // Tap-to-create: covers full grid area
+                                      Positioned.fill(
+                                        child: GestureDetector(
+                                          onTapUp: _onGridTap,
+                                          behavior: HitTestBehavior.opaque,
+                                          child: CustomPaint(
+                                            painter: _GridPainter(),
+                                          ),
+                                        ),
+                                      ),
+                                      ...tasks.map(
+                                        (t) => _TaskBlock(
+                                          key: ValueKey(t.id),
+                                          task: t,
+                                          allDayTasks: tasks,
+                                          onResizeStart: () =>
+                                              _setResizing(true),
+                                          onResizeEnd: () {
+                                            _setResizing(false);
+                                          },
+                                          onCommit: (updated) {
+                                            final prov =
+                                                Provider.of<AppProvider>(
+                                                  context,
+                                                  listen: false,
+                                                );
+                                            prov.updateTask(updated);
+                                            _resolveOverlaps(
+                                              prov,
+                                              updated.id,
+                                              tasks.map((t2) {
+                                                return t2.id == updated.id
+                                                    ? updated
+                                                    : t2;
+                                              }).toList(),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      if (isSameDay(
+                                        _currentDate,
+                                        DateTime.now(),
+                                      ))
+                                        _NowLine(),
+                                    ],
                                   ),
                                 ),
-                                if (isSameDay(_currentDate, DateTime.now()))
-                                  _NowLine(),
+                                SizedBox(
+                                  width: 96,
+                                  child: Stack(
+                                    children: [
+                                      // subtle grid lines for logs column
+                                      Positioned.fill(
+                                        child: CustomPaint(
+                                          painter: _GridPainter(),
+                                        ),
+                                      ),
+                                      ...logs.map(
+                                        (l) => _HourlyLogBlock(
+                                          key: ValueKey('log_${l.id}'),
+                                          log: l,
+                                          intervalMinutes: intervalMinutes,
+                                        ),
+                                      ),
+                                      if (isSameDay(
+                                        _currentDate,
+                                        DateTime.now(),
+                                      ))
+                                        _NowLine(),
+                                    ],
+                                  ),
+                                ),
                               ],
                             ),
                           ),
