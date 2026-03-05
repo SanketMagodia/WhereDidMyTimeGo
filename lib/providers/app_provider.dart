@@ -16,7 +16,7 @@ class AppProvider extends ChangeNotifier {
   List<TodoModel> _todos = [];
 
   bool _isAwake = true;
-  int _logIntervalMinutes = 30;
+  int _logIntervalMinutes = 60;
   bool _isPromptOwed = false;
   ThemeMode _themeMode = ThemeMode.dark;
 
@@ -60,7 +60,7 @@ class AppProvider extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _isAwake = prefs.getBool('isAwake') ?? true;
-    _logIntervalMinutes = prefs.getInt('logIntervalMinutes') ?? 30;
+    _logIntervalMinutes = prefs.getInt('logIntervalMinutes') ?? 60;
     final tm = prefs.getInt('themeMode') ?? 0;
     _themeMode = ThemeMode.values[tm.clamp(0, 2)];
     notifyListeners();
@@ -155,17 +155,24 @@ class AppProvider extends ChangeNotifier {
 
       // Auto-continue: if last notification was shown but never answered
       if (_notificationShownAt != null) {
-        final prevText = _logs.isNotEmpty && !_logs.last.isSleep
-            ? _logs.last.text
-            : 'Continued previous task';
-        _logs.add(
+        String prevText = 'Continued previous task';
+        for (var i = _logs.length - 1; i >= 0; i--) {
+          if (!_logs[i].isSleep) {
+            prevText = _logs[i].text.split(' • ').last;
+            if (prevText.startsWith('Continued: ')) {
+              prevText = prevText.substring(11).trim();
+            }
+            break;
+          }
+        }
+
+        _insertLog(
           LogEntry(
             id: _notificationShownAt!.millisecondsSinceEpoch.toString(),
             timestamp: _notificationShownAt!,
             text: 'Continued: $prevText',
           ),
         );
-        _logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
         _saveData();
         _notificationShownAt = null;
       }
@@ -184,6 +191,8 @@ class AppProvider extends ChangeNotifier {
 
       NotificationService.instance.showLogPrompt(
         _logIntervalMinutes,
+        slotStart: now.subtract(Duration(minutes: _logIntervalMinutes)),
+        slotEnd: now,
         currentTaskTitle: currentTaskTitle,
       );
       notifyListeners();
@@ -195,14 +204,76 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addLog(LogEntry entry) async {
-    _logs.add(entry);
+  void _insertLog(LogEntry entry) {
+    if (entry.isSleep) {
+      _logs.add(entry);
+    } else {
+      final t = entry.timestamp;
+      final bucketTime = t.subtract(const Duration(seconds: 1));
+      final bucketStart = DateTime(
+        t.year,
+        t.month,
+        t.day,
+        bucketTime.hour,
+        0,
+        0,
+      );
+
+      final existingIdx = _logs.indexWhere(
+        (l) => l.timestamp == bucketStart && !l.isSleep,
+      );
+
+      if (existingIdx != -1) {
+        final existing = _logs[existingIdx];
+
+        var newText = entry.text;
+        if (newText.startsWith('Continued: '))
+          newText = newText.substring(11).trim();
+
+        var oldText = existing.text;
+        if (oldText.startsWith('Continued: '))
+          oldText = oldText.substring(11).trim();
+
+        final parts = oldText.split(' • ').map((e) => e.trim()).toList();
+        if (parts.isEmpty || parts.last != newText) {
+          _logs[existingIdx] = LogEntry(
+            id: existing.id,
+            timestamp: bucketStart, // aligned to start of hour
+            text: '${existing.text} • $newText',
+            isSleep: false,
+          );
+        }
+      } else {
+        _logs.add(
+          LogEntry(
+            id: entry.id,
+            timestamp: bucketStart, // aligned to start of hour
+            text: entry.text,
+            isSleep: false,
+          ),
+        );
+      }
+    }
     _logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  }
+
+  Future<void> addLog(LogEntry entry) async {
+    _insertLog(entry);
     _isPromptOwed = false;
     _notificationShownAt = null; // answered — no auto-continue
     await NotificationService.instance.cancelLogNotification();
     notifyListeners();
     await _saveData();
+  }
+
+  /// Updates the text of an existing log entry (used by the edit dialog).
+  Future<void> updateLog(LogEntry updated) async {
+    final idx = _logs.indexWhere((l) => l.id == updated.id);
+    if (idx != -1) {
+      _logs[idx] = updated;
+      notifyListeners();
+      await _saveData();
+    }
   }
 
   /// Called when user replies to the notification from the notification shade.
@@ -317,6 +388,15 @@ class AppProvider extends ChangeNotifier {
     final idx = _todos.indexWhere((t) => t.id == id);
     if (idx != -1) {
       _todos[idx] = _todos[idx].copyWith(text: text);
+      notifyListeners();
+      await _saveData();
+    }
+  }
+
+  Future<void> toggleTodo(String id) async {
+    final idx = _todos.indexWhere((t) => t.id == id);
+    if (idx != -1) {
+      _todos[idx] = _todos[idx].copyWith(isDone: !_todos[idx].isDone);
       notifyListeners();
       await _saveData();
     }

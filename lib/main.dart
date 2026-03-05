@@ -167,14 +167,21 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
             ),
             TextButton(
               onPressed: () {
-                final lastText = provider.logs.isNotEmpty
-                    ? provider.logs.last.text
-                    : 'Continued previous task';
+                String lastText = 'Continued previous task';
+                for (var i = provider.logs.length - 1; i >= 0; i--) {
+                  if (!provider.logs[i].isSleep) {
+                    lastText = provider.logs[i].text.split(' • ').last;
+                    if (lastText.startsWith('Continued: ')) {
+                      lastText = lastText.substring(11).trim();
+                    }
+                    break;
+                  }
+                }
                 provider.addLog(
                   LogEntry(
                     id: DateTime.now().millisecondsSinceEpoch.toString(),
                     timestamp: DateTime.now(),
-                    text: lastText,
+                    text: 'Continued: $lastText',
                   ),
                 );
                 Navigator.of(ctx).pop();

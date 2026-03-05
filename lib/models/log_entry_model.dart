@@ -24,4 +24,11 @@ class LogEntry {
     text: json['text'],
     isSleep: json['isSleep'] ?? false,
   );
+
+  LogEntry copyWith({String? text}) => LogEntry(
+    id: id,
+    timestamp: timestamp,
+    text: text ?? this.text,
+    isSleep: isSleep,
+  );
 }

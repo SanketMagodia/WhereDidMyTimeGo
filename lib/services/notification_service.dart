@@ -47,8 +47,14 @@ class NotificationService {
   /// The user can type directly in the notification shade and hit send.
   Future<void> showLogPrompt(
     int intervalMinutes, {
+    required DateTime slotStart,
+    required DateTime slotEnd,
     String? currentTaskTitle,
   }) async {
+    String _p(int v) => v.toString().padLeft(2, '0');
+    final rangeLabel =
+        '${_p(slotStart.hour)}:${_p(slotStart.minute)} – ${_p(slotEnd.hour)}:${_p(slotEnd.minute)}';
+
     final androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
@@ -62,11 +68,13 @@ class NotificationService {
       actions: [
         AndroidNotificationAction(
           _replyActionId,
-          'Log Activity',
+          'Log $rangeLabel',
           showsUserInterface: false,
           allowGeneratedReplies: true,
           inputs: [
-            const AndroidNotificationActionInput(label: 'What were you doing?'),
+            AndroidNotificationActionInput(
+              label: 'What were you doing $rangeLabel?',
+            ),
           ],
         ),
       ],
@@ -76,12 +84,12 @@ class NotificationService {
 
     try {
       final body = currentTaskTitle != null
-          ? 'Ongoing: $currentTaskTitle (or type what you did)'
-          : 'Last $intervalMinutes min — tap or reply directly here';
+          ? '$rangeLabel ● Ongoing: $currentTaskTitle'
+          : '$rangeLabel ● What were you doing?';
 
       await _plugin.show(
         id: _logNotifId,
-        title: 'WDMTG — What did you do?',
+        title: 'WDMTG — Time Log',
         body: body,
         notificationDetails: details,
       );

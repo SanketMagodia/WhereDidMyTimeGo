@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../providers/app_provider.dart';
 import '../models/todo_model.dart';
 import '../theme/app_theme.dart';
@@ -56,28 +55,34 @@ class _TodosScreenState extends State<TodosScreen> {
                 style: TextStyle(color: c.muted),
               ),
             )
-          : ReorderableGridView.builder(
+          : ReorderableListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 0.9,
-              ),
               itemCount: todos.length,
               onReorder: (oldIndex, newIndex) {
                 provider.reorderTodos(oldIndex, newIndex);
               },
+              proxyDecorator: (child, index, animation) {
+                return Material(
+                  color: Colors.transparent,
+                  elevation: 6,
+                  child: child,
+                );
+              },
               itemBuilder: (context, index) {
                 final todo = todos[index];
-                return _NoteCard(
+                return Padding(
                   key: ValueKey(todo.id),
-                  todo: todo,
-                  color: _noteColors[todo.colorIndex % _noteColors.length],
-                  isLight: isLight,
-                  onTap: () => _copyToClipboard(context, todo.text),
-                  onEdit: () => _showEditDialog(context, provider, todo: todo),
-                  onDelete: () => provider.removeTodo(todo.id),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _NoteCard(
+                    todo: todo,
+                    color: _noteColors[todo.colorIndex % _noteColors.length],
+                    isLight: isLight,
+                    onTap: () => _copyToClipboard(context, todo.text),
+                    onEdit: () =>
+                        _showEditDialog(context, provider, todo: todo),
+                    onDelete: () => provider.removeTodo(todo.id),
+                    onToggle: (val) => provider.toggleTodo(todo.id),
+                  ),
                 );
               },
             ),
@@ -238,6 +243,7 @@ class _NoteCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final ValueChanged<bool?> onToggle;
 
   const _NoteCard({
     super.key,
@@ -247,74 +253,72 @@ class _NoteCard extends StatelessWidget {
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
+    required this.onToggle,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Determine a text color that contrasts well with the pastel backgrounds
-    // The note colors are generally light/mid-tone, so dark text is best.
     const noteTextColor = Colors.black87;
 
     return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(16),
-      elevation: 2,
+      color: color.withAlpha(todo.isDone ? 150 : 255),
+      borderRadius: BorderRadius.circular(12),
+      elevation: todo.isDone ? 0 : 2,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              Checkbox(
+                value: todo.isDone,
+                onChanged: onToggle,
+                activeColor: Colors.black54,
+                checkColor: color,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                side: const BorderSide(color: Colors.black54, width: 1.5),
+              ),
               Expanded(
                 child: Text(
                   todo.text,
-                  style: const TextStyle(
-                    color: noteTextColor,
-                    fontSize: 14,
-                    height: 1.3,
+                  style: TextStyle(
+                    color: todo.isDone ? Colors.black38 : noteTextColor,
+                    fontSize: 15,
+                    height: 1.4,
+                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
                   ),
-                  overflow: TextOverflow.fade,
                 ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  GestureDetector(
-                    onTap: onDelete,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(20),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.delete_outline_rounded,
-                        size: 14,
-                        color: Colors.black54,
-                      ),
-                    ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onEdit,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(
+                    Icons.edit_rounded,
+                    size: 18,
+                    color: Colors.black54,
                   ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onEdit,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(20),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.edit_rounded,
-                        size: 14,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
+              GestureDetector(
+                onTap: onDelete,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: 18,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.drag_indicator_rounded, color: Colors.black38),
+              const SizedBox(width: 8),
             ],
           ),
         ),

@@ -312,6 +312,7 @@ class _NowCard extends StatelessWidget {
                 : 'You\'ll be prompted soon',
             isEmpty: m.lastLog == null,
             icon: Icons.edit_note_rounded,
+            isSolidStyle: true,
           ),
         ],
       ),
@@ -330,6 +331,7 @@ class _NowBrick extends StatelessWidget {
   final String topLabel, mainText, subText;
   final bool isEmpty;
   final bool isActive;
+  final bool isSolidStyle;
   final IconData icon;
 
   const _NowBrick({
@@ -340,34 +342,37 @@ class _NowBrick extends StatelessWidget {
     required this.isEmpty,
     required this.icon,
     this.isActive = false,
+    this.isSolidStyle = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final bool isLight = Theme.of(context).brightness == Brightness.light;
-    final bgColor = isEmpty ? c.surface : accent;
-    final onBg = isEmpty ? c.text : (isLight ? Colors.black87 : Colors.white);
-    final onBgMuted = isEmpty
-        ? c.muted
-        : (isLight ? Colors.black54 : Colors.white70);
+
+    // Actives ALWAYS get accent. SolidStyle gets accent if not empty.
+    final bool useAccent = isActive || (isSolidStyle && !isEmpty);
+
+    final bgColor = useAccent ? accent : c.surface;
+    final onBg = useAccent ? (isLight ? Colors.black87 : Colors.white) : c.text;
+    final onBgMuted = useAccent
+        ? (isLight ? Colors.black54 : Colors.white70)
+        : c.muted;
 
     return Container(
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: isActive
-            ? Border.all(color: c.text, width: 2.0)
-            : (isEmpty ? Border.all(color: c.sep) : null),
-        boxShadow: isEmpty
-            ? null
-            : [
+        border: useAccent ? null : Border.all(color: c.sep),
+        boxShadow: useAccent
+            ? [
                 BoxShadow(
                   color: accent.withAlpha(isActive ? 150 : 80),
                   blurRadius: isActive ? 16 : 10,
                   offset: Offset(0, isActive ? 6 : 4),
                 ),
-              ],
+              ]
+            : null,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -643,6 +648,7 @@ class _Legend extends StatelessWidget {
   final Color color;
   final String label, value;
   const _Legend({
+    super.key,
     required this.color,
     required this.label,
     required this.value,
@@ -650,6 +656,7 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Row(
       children: [
         Container(
@@ -658,15 +665,12 @@ class _Legend extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
-        ),
+        Text(label, style: TextStyle(color: colors.muted, fontSize: 10)),
         const Spacer(),
         Text(
           value,
-          style: const TextStyle(
-            color: AppTheme.textMain,
+          style: TextStyle(
+            color: colors.text,
             fontSize: 10,
             fontWeight: FontWeight.w600,
           ),
@@ -814,7 +818,7 @@ class _AnimatedFeed extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -849,7 +853,8 @@ class _AnimatedFeed extends StatelessWidget {
                               padding: const EdgeInsets.only(bottom: 8),
                               child: _FeedCard(
                                 title: l.text,
-                                sub: fmt.format(l.timestamp),
+                                sub:
+                                    '${fmt.format(l.timestamp)} – ${fmt.format(l.timestamp.add(const Duration(hours: 1)))}',
                                 isDone: false,
                                 isLog: true,
                               ),
@@ -897,28 +902,45 @@ class _FeedCard extends StatelessWidget {
               ? Icons.check_circle_rounded
               : Icons.radio_button_unchecked_rounded);
 
-    final bgColor = isOngoing ? accent.withAlpha(isLight ? 25 : 40) : c.surface;
-    final borderColor = isOngoing ? accent : c.sep;
+    // Sticky note styling
+    final Color bgColor = isDone
+        ? c.surface
+        : (isLog
+              ? const Color(0xFFF7C979).withAlpha(isLight ? 150 : 60)
+              : const Color(
+                  0xFF8BA694,
+                ).withAlpha(isLight ? 150 : 60)); // Pastel tones
+
+    final borderColor = isDone ? c.sep : Colors.transparent;
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor, width: isOngoing ? 1.5 : 1.0),
+        borderRadius: BorderRadius.circular(8), // More like a sharp sticky note
+        border: Border.all(color: borderColor),
+        boxShadow: isDone
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withAlpha(isLight ? 10 : 30),
+                  blurRadius: 4,
+                  offset: const Offset(1, 2),
+                ),
+              ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: accent.withAlpha(30),
+              color: isDone ? Colors.transparent : accent.withAlpha(40),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: accent, size: 14),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -933,7 +955,7 @@ class _FeedCard extends StatelessWidget {
                         ? TextDecoration.lineThrough
                         : null,
                   ),
-                  maxLines: 2,
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),

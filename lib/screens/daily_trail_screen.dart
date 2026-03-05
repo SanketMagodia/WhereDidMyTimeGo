@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/task_model.dart';
+import '../models/log_entry_model.dart';
 import '../theme/app_theme.dart';
 import 'add_task_dialog.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -36,6 +37,7 @@ class DailyTrailScreen extends StatefulWidget {
 class _DailyTrailScreenState extends State<DailyTrailScreen> {
   final ScrollController _gridScroll = ScrollController();
   final ScrollController _timeScroll = ScrollController();
+  final ScrollController _logScroll = ScrollController();
 
   DateTime _currentDate = DateTime.now();
   CalendarFormat _calendarFormat = CalendarFormat.week;
@@ -59,6 +61,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
   void dispose() {
     _gridScroll.dispose();
     _timeScroll.dispose();
+    _logScroll.dispose();
     super.dispose();
   }
 
@@ -82,10 +85,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
 
   void _shiftAll(bool up) {
     final p = Provider.of<AppProvider>(context, listen: false);
-    p.shiftTasksForDay(
-      _currentDate,
-      Duration(minutes: up ? -p.logIntervalMinutes : p.logIntervalMinutes),
-    );
+    p.shiftTasksForDay(_currentDate, Duration(minutes: up ? -30 : 30));
   }
 
   // ── Resolve overlaps: push colliding tasks away ───────────────────────────
@@ -333,12 +333,15 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
                           ),
                         ),
                       ),
-                      // Grid area
+                      // ── Tasks column ───────────────────────────────────
                       Expanded(
                         child: NotificationListener<ScrollNotification>(
                           onNotification: (n) {
                             if (_timeScroll.hasClients) {
                               _timeScroll.jumpTo(n.metrics.pixels);
+                            }
+                            if (_logScroll.hasClients) {
+                              _logScroll.jumpTo(n.metrics.pixels);
                             }
                             return false;
                           },
@@ -388,18 +391,38 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
                                       },
                                     ),
                                   ),
-                                  // Log strips — placed BEFORE the log time to show
-                                  // what was done in the preceding interval period.
-                                  ...logs.map(
-                                    (l) => _LogOverlay(
-                                      log: l,
-                                      intervalMinutes: intervalMinutes,
-                                    ),
-                                  ),
                                   if (isSameDay(_currentDate, DateTime.now()))
                                     _NowLine(),
                                 ],
                               ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // ── Logs column ────────────────────────────────────
+                      SizedBox(
+                        width: 96,
+                        child: SingleChildScrollView(
+                          controller: _logScroll,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: SizedBox(
+                            height: totalH,
+                            child: Stack(
+                              children: [
+                                // subtle grid lines for logs column
+                                Positioned.fill(
+                                  child: CustomPaint(painter: _GridPainter()),
+                                ),
+                                ...logs.map(
+                                  (l) => _HourlyLogBlock(
+                                    key: ValueKey('log_${l.id}'),
+                                    log: l,
+                                    intervalMinutes: intervalMinutes,
+                                  ),
+                                ),
+                                if (isSameDay(_currentDate, DateTime.now()))
+                                  _NowLine(),
+                              ],
                             ),
                           ),
                         ),
@@ -415,7 +438,6 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
               right: 16,
               child: _ShiftButtons(
                 onShift: (delay) => _shiftFutureTasks(delay, provider),
-                intervalMinutes: intervalMinutes,
               ),
             ),
           ],
@@ -428,7 +450,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
   /// Tasks that have already started or are in the past are NOT moved.
   void _shiftFutureTasks(bool delay, AppProvider provider) {
     final now = DateTime.now();
-    final interval = provider.logIntervalMinutes;
+    const interval = 30; // fixed 30-minute shift regardless of log interval
     final dt = Duration(minutes: delay ? interval : -interval);
     final tasks = provider.tasks
         .where(
@@ -458,11 +480,10 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
 } // end _DailyTrailScreenState
 
 // ─── Shift buttons widget ─────────────────────────────────────────────────────
-// Floating bottom-right buttons; only future tasks are affected per one block.
+// Floating bottom-right buttons; shifts tasks by a fixed 30 minutes.
 class _ShiftButtons extends StatelessWidget {
   final void Function(bool delay) onShift;
-  final int intervalMinutes;
-  const _ShiftButtons({required this.onShift, required this.intervalMinutes});
+  const _ShiftButtons({required this.onShift});
 
   @override
   Widget build(BuildContext context) {
@@ -471,7 +492,7 @@ class _ShiftButtons extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Tooltip(
-          message: 'Move future tasks earlier by $intervalMinutes min',
+          message: 'Move future tasks 30 min earlier',
           child: Material(
             color: c.surface,
             elevation: 4,
@@ -480,16 +501,16 @@ class _ShiftButtons extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               onTap: () => onShift(false),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                width: 110,
+                height: 36,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   border: Border.all(color: c.secondary),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.arrow_upward_rounded,
@@ -498,7 +519,7 @@ class _ShiftButtons extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '-${intervalMinutes}m earlier',
+                      '-30m earlier',
                       style: TextStyle(
                         color: c.secondary,
                         fontSize: 11,
@@ -513,7 +534,7 @@ class _ShiftButtons extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Tooltip(
-          message: 'Delay future tasks by $intervalMinutes min',
+          message: 'Delay future tasks by 30 min',
           child: Material(
             color: c.surface,
             elevation: 4,
@@ -522,16 +543,16 @@ class _ShiftButtons extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               onTap: () => onShift(true),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                width: 110,
+                height: 36,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   border: Border.all(color: c.primary),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.arrow_downward_rounded,
@@ -540,7 +561,7 @@ class _ShiftButtons extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '+${intervalMinutes}m delay',
+                      '+30m delay',
                       style: TextStyle(
                         color: c.primary,
                         fontSize: 11,
@@ -558,79 +579,312 @@ class _ShiftButtons extends StatelessWidget {
   }
 }
 
-// ─── Log entry overlay ────────────────────────────────────────────────────────
-// Placed ABOVE the log timestamp to represent the preceding interval period.
-class _LogOverlay extends StatelessWidget {
+// ─── Hourly log block ─────────────────────────────────────────────────────────
+// Fills the full 60-minute height for that hour, divided into sub-sections
+// matching the user's log interval. Tap to edit any section.
+class _HourlyLogBlock extends StatelessWidget {
   final dynamic log;
   final int intervalMinutes;
-  const _LogOverlay({required this.log, required this.intervalMinutes});
+  const _HourlyLogBlock({
+    super.key,
+    required this.log,
+    required this.intervalMinutes,
+  });
 
   @override
   Widget build(BuildContext context) {
     final t = log.timestamp as DateTime;
-    // Log represents activity for [t - interval .. t]
-    // Place the strip starting at (t - interval) and height = interval * _px
-    final int logMin = t.hour * 60 + t.minute;
-    final int startMin = (logMin - intervalMinutes).clamp(0, 23 * 60);
-    final double top = startMin * _px;
     final bool isSleep = (log.isSleep as bool?) ?? false;
+
+    // Always anchored to the start of the hour (bucketStart = log.timestamp)
+    final double top = (t.hour * 60) * _px;
+    final double blockHeight = 60 * _px;
+
+    // Number of sub-sections
+    final int n = isSleep ? 1 : (60 ~/ intervalMinutes).clamp(1, 6);
+    // Note: no manual sectionH arithmetic — we use Expanded to avoid float rounding errors.
+
+    // Parse text into per-section strings
+    final List<String> rawParts = (log.text as String).split(' • ');
+    final List<String> sections = List.generate(n, (i) {
+      if (i < rawParts.length) return rawParts[i];
+      return ''; // future sub-slots not yet logged — show blank
+    });
+
+    final Color baseColor = isSleep
+        ? AppTheme.accentPrimary.withValues(alpha: 0.85)
+        : AppTheme.accentGold.withValues(alpha: 0.85);
+    final Color accentColor = isSleep
+        ? AppTheme.accentPrimary
+        : AppTheme.accentGold;
 
     return Positioned(
       top: top,
+      left: 0,
       right: 0,
-      width:
-          82, // fixed width — FractionallySizedBox inside Stack causes layout loops
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 26),
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-        decoration: BoxDecoration(
-          color: isSleep
-              ? AppTheme.accentPrimary.withValues(alpha: 0.82)
-              : AppTheme.accentGold.withValues(alpha: 0.82),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(4),
-            bottomLeft: Radius.circular(4),
-          ),
-          border: Border(
-            left: BorderSide(
-              color: isSleep ? AppTheme.accentPrimary : AppTheme.accentGold,
-              width: 2.5,
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 4,
-              offset: const Offset(-1, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 7,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.3,
+      height: blockHeight,
+      child: GestureDetector(
+        onTap: isSleep ? null : () => _showEditDialog(context, sections),
+        child: Container(
+          decoration: BoxDecoration(
+            color: baseColor,
+            border: Border(
+              left: BorderSide(color: accentColor, width: 2.5),
+              top: BorderSide(
+                color: accentColor.withValues(alpha: 0.4),
+                width: 0.5,
+              ),
+              bottom: BorderSide(
+                color: accentColor.withValues(alpha: 0.4),
+                width: 0.5,
               ),
             ),
-            Text(
-              log.text as String,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 8,
-                height: 1.2,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 3,
+                offset: const Offset(-1, 1),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+            ],
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: Column(
+            children: List.generate(n, (i) {
+              final sectionTime = DateTime(
+                t.year,
+                t.month,
+                t.day,
+                t.hour,
+                i * intervalMinutes,
+              );
+              final timeLabel =
+                  '${sectionTime.hour.toString().padLeft(2, '0')}:${sectionTime.minute.toString().padLeft(2, '0')}';
+              return Expanded(
+                child: ClipRect(
+                  child: Container(
+                    decoration: i < n - 1
+                        ? BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.25),
+                                width: 0.5,
+                              ),
+                            ),
+                          )
+                        : null,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    child: OverflowBox(
+                      alignment: Alignment.topLeft,
+                      maxHeight: double.infinity,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            timeLabel,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 7,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          Text(
+                            sections[i],
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              height: 1.2,
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
         ),
       ),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, List<String> sections) {
+    showDialog(
+      context: context,
+      builder: (_) => _LogEditDialog(
+        log: log,
+        sections: sections,
+        intervalMinutes: intervalMinutes,
+      ),
+    );
+  }
+}
+
+// ─── Log edit dialog ───────────────────────────────────────────────────────────
+class _LogEditDialog extends StatefulWidget {
+  final dynamic log;
+  final List<String> sections;
+  final int intervalMinutes;
+  const _LogEditDialog({
+    required this.log,
+    required this.sections,
+    required this.intervalMinutes,
+  });
+
+  @override
+  State<_LogEditDialog> createState() => _LogEditDialogState();
+}
+
+class _LogEditDialogState extends State<_LogEditDialog> {
+  late final List<TextEditingController> _ctrls;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = widget.sections
+        .map((s) => TextEditingController(text: s))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) c.dispose();
+    super.dispose();
+  }
+
+  void _copyDown(int fromIndex) {
+    final text = _ctrls[fromIndex].text.trim();
+    for (var j = fromIndex + 1; j < _ctrls.length; j++) {
+      _ctrls[j].text = text;
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final t = widget.log.timestamp as DateTime;
+    final n = widget.sections.length;
+
+    return AlertDialog(
+      backgroundColor: colors.surface,
+      title: Text(
+        'Edit ${t.hour.toString().padLeft(2, '0')}:00 – ${(t.hour + 1).toString().padLeft(2, '0')}:00',
+        style: TextStyle(
+          color: colors.text,
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(n, (i) {
+            final secStart = DateTime(
+              t.year,
+              t.month,
+              t.day,
+              t.hour,
+              i * widget.intervalMinutes,
+            );
+            final secEnd = DateTime(
+              t.year,
+              t.month,
+              t.day,
+              t.hour,
+              (i + 1) * widget.intervalMinutes,
+            );
+            final label =
+                '${secStart.hour.toString().padLeft(2, '0')}:${secStart.minute.toString().padLeft(2, '0')}'
+                ' – '
+                '${secEnd.hour.toString().padLeft(2, '0')}:${secEnd.minute.toString().padLeft(2, '0')}';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(color: colors.muted, fontSize: 11),
+                      ),
+                      const Spacer(),
+                      // Copy this section's text to all sections below
+                      if (i < n - 1)
+                        Tooltip(
+                          message: 'Copy to remaining sections',
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _copyDown(i),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.arrow_downward_rounded,
+                                size: 14,
+                                color: AppTheme.accentGold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: _ctrls[i],
+                    style: TextStyle(color: colors.text, fontSize: 13),
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: colors.surfaceMid,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancel', style: TextStyle(color: colors.muted)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.accentGold,
+            foregroundColor: Colors.black87,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          onPressed: () {
+            final newText = _ctrls
+                .map((c) => c.text.trim())
+                .where((s) => s.isNotEmpty)
+                .join(' • ');
+            final updated = (widget.log as LogEntry).copyWith(text: newText);
+            Provider.of<AppProvider>(context, listen: false).updateLog(updated);
+            Navigator.pop(context);
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
