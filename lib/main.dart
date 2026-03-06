@@ -17,16 +17,20 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
   if (text != null) {
     // We can't access the provider from a background isolate.
     // Store in SharedPreferences; main isolate reads on next _init().
+    WidgetsFlutterBinding.ensureInitialized();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pending_log_reply', text);
-    await prefs.setInt(
-      'pending_log_time',
-      DateTime.now().millisecondsSinceEpoch,
-    );
+
+    int timeMs = DateTime.now().millisecondsSinceEpoch;
+    if (response.payload != null) {
+      timeMs = int.tryParse(response.payload!) ?? timeMs;
+    }
+
+    await prefs.setInt('pending_log_time', timeMs);
     // MUST cancel the notification ID here so Android clears the UI loading spinner
     FlutterLocalNotificationsPlugin().cancel(
-      id: 0,
-    ); // 0 corresponds to _logNotifId
+      id: 1, // 1 corresponds to _logNotifId
+    );
   }
 }
 
@@ -35,7 +39,16 @@ AppProvider? _providerRef; // weak singleton ref for foreground handler
 void _onForegroundNotificationResponse(NotificationResponse response) {
   final text = NotificationService.extractReply(response);
   if (text != null && _providerRef != null) {
-    _providerRef!.handleNotificationReply(text, DateTime.now());
+    DateTime time = DateTime.now();
+    if (response.payload != null) {
+      final parsed = int.tryParse(response.payload!);
+      if (parsed != null) {
+        time = DateTime.fromMillisecondsSinceEpoch(parsed);
+      }
+    }
+    _providerRef!.handleNotificationReply(text, time);
+    // Explicitly cancel the notification to clear the inline reply spinner
+    FlutterLocalNotificationsPlugin().cancel(id: 1);
   }
 }
 
@@ -104,6 +117,9 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
   void _showLogPromptDialog(BuildContext context, AppProvider provider) {
     provider.clearPrompt();
     final textController = TextEditingController();
+
+    // Use the exact prompt time from the provider rather than DateTime.now() if answering the prompt
+    final logTime = provider.notificationShownAt ?? DateTime.now();
 
     showDialog(
       context: context,
@@ -184,8 +200,8 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
                 }
                 provider.addLog(
                   LogEntry(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    timestamp: DateTime.now(),
+                    id: logTime.millisecondsSinceEpoch.toString(),
+                    timestamp: logTime,
                     text: 'Continued: $lastText',
                   ),
                 );
@@ -207,8 +223,8 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
               onPressed: () {
                 provider.addLog(
                   LogEntry(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    timestamp: DateTime.now(),
+                    id: logTime.millisecondsSinceEpoch.toString(),
+                    timestamp: logTime,
                     text: textController.text.isNotEmpty
                         ? textController.text
                         : 'No details provided',

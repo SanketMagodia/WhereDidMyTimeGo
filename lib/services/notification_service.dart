@@ -93,6 +93,7 @@ class NotificationService {
         title: 'WDMTG — Time Log',
         body: body,
         notificationDetails: details,
+        payload: slotEnd.millisecondsSinceEpoch.toString(),
       );
     } catch (e) {
       debugPrint('NotificationService.showLogPrompt error: $e');

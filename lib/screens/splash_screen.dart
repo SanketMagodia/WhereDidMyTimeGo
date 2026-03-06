@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
+import 'tutorial_screen.dart';
 import '../main.dart'; // For GlobalPromptWrapper
 
 class SplashScreen extends StatefulWidget {
@@ -30,12 +32,16 @@ class _SplashScreenState extends State<SplashScreen>
     _anim.forward();
 
     // 1-second delay before navigating
-    Future.delayed(const Duration(seconds: 1), () {
+    Future.delayed(const Duration(seconds: 1), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final hasSeenTutorial = prefs.getBool('has_seen_tutorial') ?? false;
+
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) =>
-                const GlobalPromptWrapper(child: HomeScreen()),
+            pageBuilder: (_, __, ___) => hasSeenTutorial
+                ? const GlobalPromptWrapper(child: HomeScreen())
+                : const TutorialScreen(),
             transitionsBuilder: (_, a, __, c) =>
                 FadeTransition(opacity: a, child: c),
             transitionDuration: const Duration(milliseconds: 400),

@@ -84,6 +84,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _checkPendingNotifications() async {
     final prefs = await SharedPreferences.getInstance();
+    // Must reload to get latest disk values, as background isolate writes to the same file
+    await prefs.reload();
+
     final text = prefs.getString('pending_log_reply');
     final timeMs = prefs.getInt('pending_log_time');
 
@@ -251,51 +254,107 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  DateTime? get notificationShownAt => _notificationShownAt;
+
   void _insertLog(LogEntry entry) {
     if (entry.isSleep) {
       _logs.add(entry);
     } else {
       final t = entry.timestamp;
-      final bucketTime = t.subtract(const Duration(seconds: 1));
-      final bucketStart = DateTime(
-        t.year,
-        t.month,
-        t.day,
-        bucketTime.hour,
+
+      // Calculate the start of the exact time block (e.g., 14:15, 14:30)
+      final hourStart = DateTime(t.year, t.month, t.day, t.hour, 0);
+
+      // We maintain logs conceptually at the start of the hour in the list,
+      // but conceptually we want to build a string grouped by interval slices.
+      final existingIdx = _logs.indexWhere(
+        (l) => l.timestamp == hourStart && !l.isSleep,
+      );
+      final int nSlots = 60 ~/ _logIntervalMinutes;
+      final int currentSlotIndex = (t.minute ~/ _logIntervalMinutes).clamp(
         0,
-        0,
+        nSlots - 1,
       );
 
-      final existingIdx = _logs.indexWhere(
-        (l) => l.timestamp == bucketStart && !l.isSleep,
-      );
+      List<String> textParts;
+      if (existingIdx != -1) {
+        textParts = _logs[existingIdx].text
+            .split(' • ')
+            .map((e) => e.trim())
+            .toList();
+      } else {
+        textParts = List.generate(nSlots, (_) => '');
+      }
+
+      // Pad array if previous interval settings caused fewer than expected parts
+      while (textParts.length < nSlots) {
+        textParts.add('');
+      }
+
+      var newText = entry.text;
+      if (newText.startsWith('Continued: ')) {
+        newText = newText.substring(11).trim();
+      }
+
+      textParts[currentSlotIndex] = newText;
+
+      // Ensure continuity: if previous slots in the same hour are empty, fill them with the last known log
+      String lastKnown = '';
+      if (currentSlotIndex > 0) {
+        // Try to find the most recent non-empty string in previous slots of THIS hour
+        for (int i = currentSlotIndex - 1; i >= 0; i--) {
+          if (textParts[i].isNotEmpty) {
+            lastKnown = textParts[i];
+            break;
+          }
+        }
+      }
+
+      // If we didn't find anything in this hour, look at previous hours
+      if (lastKnown.isEmpty) {
+        for (var i = _logs.length - 1; i >= 0; i--) {
+          if (!_logs[i].isSleep && _logs[i].timestamp.isBefore(hourStart)) {
+            final parts = _logs[i].text.split(' • ');
+            lastKnown = parts.lastWhere(
+              (p) => p.trim().isNotEmpty,
+              orElse: () => '',
+            );
+            if (lastKnown.isNotEmpty) break;
+          }
+        }
+      }
+
+      // If we STILL don't have anything, use a default fallback
+      if (lastKnown.isEmpty) {
+        lastKnown =
+            'Continued previous task'; // Or just leave empty depending on preference, but we'll fulfill continuity.
+      }
+
+      // Now fill any empty gaps up to the current slot index
+      for (int i = 0; i <= currentSlotIndex; i++) {
+        if (textParts[i].isEmpty) {
+          // If we are at slot 0, and we pulled from previous hour, we fill it.
+          // If we are > 0, we pulled from earlier slot or previous hour, we fill it.
+          textParts[i] = lastKnown;
+        }
+      }
+
+      final combinedText = textParts.join(' • ');
 
       if (existingIdx != -1) {
-        final existing = _logs[existingIdx];
-
-        var newText = entry.text;
-        if (newText.startsWith('Continued: '))
-          newText = newText.substring(11).trim();
-
-        var oldText = existing.text;
-        if (oldText.startsWith('Continued: '))
-          oldText = oldText.substring(11).trim();
-
-        final parts = oldText.split(' • ').map((e) => e.trim()).toList();
-        if (parts.isEmpty || parts.last != newText) {
-          _logs[existingIdx] = LogEntry(
-            id: existing.id,
-            timestamp: bucketStart, // aligned to start of hour
-            text: '${existing.text} • $newText',
-            isSleep: false,
-          );
-        }
+        _logs[existingIdx] = LogEntry(
+          id: _logs[existingIdx].id,
+          timestamp: hourStart,
+          text: combinedText,
+          isSleep: false,
+        );
       } else {
         _logs.add(
           LogEntry(
-            id: entry.id,
-            timestamp: bucketStart, // aligned to start of hour
-            text: entry.text,
+            id: entry
+                .id, // Or use hourStart.millisecondsSinceEpoch if tracking by hour ID
+            timestamp: hourStart,
+            text: combinedText,
             isSleep: false,
           ),
         );
@@ -325,14 +384,30 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _saveData();
   }
 
+  /// Manually log entry for the current active time block, replacing what's there
+  Future<void> logNowForCurrentBlock(String text) async {
+    final now = DateTime.now();
+    await addLog(
+      LogEntry(
+        id: now.millisecondsSinceEpoch.toString(),
+        timestamp: now,
+        text: text,
+        isSleep: false,
+      ),
+    );
+  }
+
   /// Updates the text of an existing log entry (used by the edit dialog).
   Future<void> updateLog(LogEntry updated) async {
     final idx = _logs.indexWhere((l) => l.id == updated.id);
     if (idx != -1) {
       _logs[idx] = updated;
-      notifyListeners();
-      await _saveData();
+    } else {
+      _logs.add(updated); // Add if doesn't exist to prevent data loss
+      _logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     }
+    notifyListeners();
+    await _saveData();
   }
 
   /// Called when user replies to the notification from the notification shade.

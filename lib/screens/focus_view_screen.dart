@@ -107,6 +107,55 @@ class FocusViewScreen extends StatelessWidget {
     );
   }
 
+  void _logNow(BuildContext context) {
+    final textController = TextEditingController();
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    final c = AppColors.of(context);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text(
+          'Log current activity',
+          style: TextStyle(color: c.text, fontSize: 16),
+        ),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          style: TextStyle(color: c.text),
+          decoration: InputDecoration(
+            hintText: 'What are you doing now?',
+            hintStyle: TextStyle(color: c.muted),
+            filled: true,
+            fillColor: c.surfaceMid,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel', style: TextStyle(color: c.muted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: c.gold,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final text = textController.text.trim();
+              if (text.isNotEmpty) {
+                provider.logNowForCurrentBlock(text);
+              }
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
@@ -114,11 +163,30 @@ class FocusViewScreen extends StatelessWidget {
     final m = _compute(provider.tasks, provider.logs, now);
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'home_fab',
-        onPressed: () => _addTask(context, now),
-        backgroundColor: AppTheme.accentPrimary,
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'log_now_fab',
+            onPressed: () => _logNow(context),
+            backgroundColor: AppTheme.accentGold,
+            icon: const Icon(Icons.edit_note_rounded, color: Colors.white),
+            label: const Text(
+              'Log Now',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FloatingActionButton(
+            heroTag: 'add_task_fab',
+            onPressed: () => _addTask(context, now),
+            backgroundColor: AppTheme.accentPrimary,
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 26),
+          ),
+        ],
       ),
       body: SafeArea(
         child: CustomScrollView(

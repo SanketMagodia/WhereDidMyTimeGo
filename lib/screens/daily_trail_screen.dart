@@ -448,8 +448,66 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
                                     children: [
                                       // subtle grid lines for logs column
                                       Positioned.fill(
-                                        child: CustomPaint(
-                                          painter: _GridPainter(),
+                                        child: GestureDetector(
+                                          onTapUp: (details) {
+                                            final int snapped = _snapMin(
+                                              (details.localPosition.dy / _px)
+                                                  .floor(),
+                                            ).clamp(0, 23 * 60 + 30);
+                                            final t = _fromMin(
+                                              _currentDate,
+                                              snapped,
+                                            );
+                                            final hourStart = DateTime(
+                                              t.year,
+                                              t.month,
+                                              t.day,
+                                              t.hour,
+                                              0,
+                                            );
+
+                                            // Check if log already exists
+                                            final existingLog = logs
+                                                .where(
+                                                  (l) =>
+                                                      l.timestamp ==
+                                                          hourStart &&
+                                                      !l.isSleep,
+                                                )
+                                                .firstOrNull;
+
+                                            if (existingLog != null) {
+                                              // Already exists, just edit it (optional enhancement, but _HourlyLogBlock already handles its own tap)
+                                              return;
+                                            }
+
+                                            // Create template LogEntry
+                                            final n = 60 ~/ intervalMinutes;
+                                            final emptyText = List.filled(
+                                              n,
+                                              '',
+                                            ).join(' • ');
+
+                                            showDialog(
+                                              context: context,
+                                              builder: (_) => _LogEditDialog(
+                                                log: LogEntry(
+                                                  id: hourStart
+                                                      .millisecondsSinceEpoch
+                                                      .toString(),
+                                                  timestamp: hourStart,
+                                                  text: emptyText,
+                                                ),
+                                                sections: List.filled(n, ''),
+                                                intervalMinutes:
+                                                    intervalMinutes,
+                                              ),
+                                            );
+                                          },
+                                          behavior: HitTestBehavior.opaque,
+                                          child: CustomPaint(
+                                            painter: _GridPainter(),
+                                          ),
                                         ),
                                       ),
                                       ...logs.map(
