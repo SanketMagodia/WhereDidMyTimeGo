@@ -1,6 +1,8 @@
+import 'dart:ui'; // For DartPluginRegistrant
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/app_provider.dart';
 import 'theme/app_theme.dart';
@@ -8,29 +10,30 @@ import 'models/log_entry_model.dart';
 import 'services/notification_service.dart';
 import 'screens/splash_screen.dart';
 
-// ─── Background notification handler ─────────────────────────────────────────
-// Must be a top-level function (not a class method) to run in background isolate.
-// Saves reply to SharedPreferences; main isolate picks it up on resume.
 @pragma('vm:entry-point')
 void _backgroundNotificationHandler(NotificationResponse response) async {
-  final text = NotificationService.extractReply(response);
-  if (text != null) {
-    // We can't access the provider from a background isolate.
-    // Store in SharedPreferences; main isolate reads on next _init().
-    WidgetsFlutterBinding.ensureInitialized();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('pending_log_reply', text);
+  try {
+    final text = NotificationService.extractReply(response);
+    if (text != null) {
+      WidgetsFlutterBinding.ensureInitialized();
+      DartPluginRegistrant.ensureInitialized();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pending_log_reply', text);
 
-    int timeMs = DateTime.now().millisecondsSinceEpoch;
-    if (response.payload != null) {
-      timeMs = int.tryParse(response.payload!) ?? timeMs;
+      int timeMs = DateTime.now().millisecondsSinceEpoch;
+      if (response.payload != null) {
+        timeMs = int.tryParse(response.payload!) ?? timeMs;
+      }
+
+      await prefs.setInt('pending_log_time', timeMs);
     }
-
-    await prefs.setInt('pending_log_time', timeMs);
-    // MUST cancel the notification ID here so Android clears the UI loading spinner
-    FlutterLocalNotificationsPlugin().cancel(
-      id: 1, // 1 corresponds to _logNotifId
-    );
+  } catch (e) {
+    debugPrint("Background handler error: $e");
+  } finally {
+    try {
+      // MUST cancel the notification ID here so Android clears the UI loading spinner
+      FlutterLocalNotificationsPlugin().cancel(id: 1);
+    } catch (_) {}
   }
 }
 
@@ -54,6 +57,15 @@ void _onForegroundNotificationResponse(NotificationResponse response) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    debugPrint("Initializing FlutterGemma...");
+    await FlutterGemma.initialize();
+    debugPrint("FlutterGemma initialized successfully.");
+  } catch (e, stack) {
+    debugPrint("CRITICAL ERROR initializing FlutterGemma: $e\n$stack");
+  }
+
   await NotificationService.instance.init(
     onResponse: _onForegroundNotificationResponse,
     onBackgroundResponse: _backgroundNotificationHandler,

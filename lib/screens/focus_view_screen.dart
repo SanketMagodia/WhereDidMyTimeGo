@@ -7,6 +7,7 @@ import '../models/log_entry_model.dart';
 import '../theme/app_theme.dart';
 import 'add_task_dialog.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
 
 // ───────────────────────────────────────────────────────────────────────────
 // The app has TWO distinct data sources:
@@ -73,6 +74,13 @@ class FocusViewScreen extends StatelessWidget {
           .key;
     }
 
+    // Category distribution
+    final catCounts = <String, int>{};
+    for (final l in todayLogs) {
+      final c = l.category ?? 'miscellaneous';
+      catCounts[c] = (catCounts[c] ?? 0) + 1;
+    }
+
     return _Metrics(
       prev: prev,
       current: current,
@@ -86,6 +94,7 @@ class FocusViewScreen extends StatelessWidget {
       tasksTotal: todayTasks.length,
       tasksDone: tasksDone,
       topActivity: topActivity,
+      categoryCounts: catCounts,
     );
   }
 
@@ -198,10 +207,13 @@ class FocusViewScreen extends StatelessWidget {
             SliverToBoxAdapter(
               child: _NowCard(metrics: m, now: now),
             ),
-            SliverToBoxAdapter(child: _StatStrip(m: m)),
+            SliverToBoxAdapter(
+              child: _AiInsightLauncher(provider: provider, m: m),
+            ),
             SliverToBoxAdapter(
               child: _DonutCard(m: m, now: now),
             ),
+            SliverToBoxAdapter(child: _StatStrip(m: m)),
             SliverToBoxAdapter(
               child: _AnimatedFeed(m: m, now: now),
             ),
@@ -236,7 +248,10 @@ class _Metrics {
     required this.tasksTotal,
     required this.tasksDone,
     this.topActivity,
+    required this.categoryCounts,
   });
+
+  final Map<String, int> categoryCounts;
 
   double get dayFraction => (elapsedMin / (18 * 60)).clamp(0.0, 1.0);
   double get planCoverage =>
@@ -716,7 +731,6 @@ class _Legend extends StatelessWidget {
   final Color color;
   final String label, value;
   const _Legend({
-    super.key,
     required this.color,
     required this.label,
     required this.value,
@@ -744,6 +758,346 @@ class _Legend extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── AI Category Breakdown ───────────────────────────────────────────────────
+class _CategoryTags extends StatelessWidget {
+  final _Metrics m;
+  const _CategoryTags({required this.m});
+
+  @override
+  Widget build(BuildContext context) {
+    if (m.todayLogs.isEmpty) return const SizedBox.shrink();
+
+    final c = AppColors.of(context);
+    final total = m.todayLogs.length;
+
+    final sortedCats = m.categoryCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, size: 12, color: c.gold),
+              const SizedBox(width: 4),
+              Text(
+                'ACTIVITY BREAKDOWN',
+                style: TextStyle(
+                  color: c.gold,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 2.8,
+            ),
+            itemCount: sortedCats.length,
+            itemBuilder: (context, i) {
+              final cat = sortedCats[i].key;
+              final count = sortedCats[i].value;
+              final pct = (count / total).clamp(0.0, 1.0);
+
+              Color color = c.muted;
+              IconData icon = Icons.label_rounded;
+
+              switch (cat) {
+                case 'Exercise':
+                  color = Colors.greenAccent;
+                  icon = Icons.fitness_center_rounded;
+                  break;
+                case 'Study':
+                  color = Colors.cyanAccent;
+                  icon = Icons.menu_book_rounded;
+                  break;
+                case 'Social':
+                  color = Colors.orangeAccent;
+                  icon = Icons.celebration_rounded;
+                  break;
+                case 'Time Waste':
+                  color = Colors.redAccent;
+                  icon = Icons.videogame_asset_rounded;
+                  break;
+              }
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.sep),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            value: pct,
+                            strokeWidth: 3,
+                            backgroundColor: color.withAlpha(40),
+                            color: color,
+                          ),
+                        ),
+                        Icon(icon, size: 14, color: color),
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cat,
+                            style: TextStyle(
+                              color: c.text,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${(pct * 100).round()}% of focus',
+                            style: TextStyle(color: c.muted, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── AI Summary Card ─────────────────────────────────────────────────────────
+
+class _AiSummaryCard extends StatefulWidget {
+  final AppProvider provider;
+  final _Metrics m;
+  const _AiSummaryCard({required this.provider, required this.m});
+
+  @override
+  State<_AiSummaryCard> createState() => _AiSummaryCardState();
+}
+
+class _AiSummaryCardState extends State<_AiSummaryCard> {
+  String? _summary;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.provider.isAiReady && widget.m.todayLogs.isNotEmpty) {
+        _generateSummary();
+      }
+    });
+  }
+
+  Future<void> _generateSummary() async {
+    if (!widget.provider.isAiReady || widget.m.todayLogs.isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+      _summary = null;
+    });
+
+    try {
+      final timelineBuf = StringBuffer();
+      final fmt = DateFormat('HH:mm');
+      for (final l in widget.m.todayLogs) {
+        if (!l.isSleep && l.text.trim().isNotEmpty) {
+          timelineBuf.writeln("${fmt.format(l.timestamp)}: ${l.text}");
+        }
+      }
+
+      final prompt =
+          "Here is my timeline for today:\n${timelineBuf.toString()}\nAs a helpful AI assistant, give me a very short 1 sentence summary of how my day went, cheer me up if I did well, and give me a short tip for tomorrow.";
+
+      final activeModel = await FlutterGemma.getActiveModel(maxTokens: 1024);
+      final chat = await activeModel.createChat();
+      await chat.addQuery(Message(text: prompt, isUser: true));
+
+      final response = await chat.generateChatResponse();
+      final responseText = response is TextResponse ? response.token : "";
+
+      if (mounted) {
+        setState(() {
+          _summary = responseText.trim();
+        });
+      }
+    } catch (e) {
+      debugPrint("Summary error: $e");
+      if (mounted) {
+        setState(() {
+          _summary = "Failed to generate summary. Please check your model.";
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.provider.isAiReady) return const SizedBox.shrink();
+    if (widget.m.todayLogs.isEmpty) return const SizedBox.shrink();
+
+    final c = AppColors.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.gold.withAlpha(50)),
+          boxShadow: [
+            BoxShadow(
+              color: c.gold.withAlpha(10),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: c.gold.withAlpha(30),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: c.gold,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Daily Reflection',
+                  style: TextStyle(
+                    color: c.text,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const Spacer(),
+                if (!_isLoading && _summary == null)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: c.gold,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 0,
+                      ),
+                      minimumSize: const Size(0, 28),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: _generateSummary,
+                    child: const Text(
+                      'Generate',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+
+            if (_isLoading) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: c.gold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'AI is thinking offline...',
+                  style: TextStyle(color: c.muted, fontSize: 11),
+                ),
+              ),
+            ],
+
+            if (_summary != null && !_isLoading) ...[
+              const SizedBox(height: 16),
+              Text(
+                _summary!,
+                style: TextStyle(
+                  color: c.text.withAlpha(220),
+                  fontSize: 13,
+                  height: 1.5,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: c.muted,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: _generateSummary,
+                  icon: const Icon(Icons.refresh_rounded, size: 14),
+                  label: const Text(
+                    'Regenerate',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -821,7 +1175,7 @@ class _AnimatedFeed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppColors.of(context);
+    // final c = AppColors.of(context); // Removed as per instruction
     final fmt = DateFormat('HH:mm');
 
     final tasks = m.todayTasks.reversed.toList();
@@ -1062,3 +1416,134 @@ Widget _sectionLabel(String text) => Text(
     letterSpacing: 0.8,
   ),
 );
+
+// ── AI Section Launcher ───────────────────────────────────────────────────────
+
+class _AiInsightLauncher extends StatelessWidget {
+  final AppProvider provider;
+  final _Metrics m;
+  const _AiInsightLauncher({required this.provider, required this.m});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!provider.isAiReady || m.todayLogs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final c = AppColors.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showAiInsights(context),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: c.gold.withAlpha(20),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: c.gold.withAlpha(50)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: c.gold.withAlpha(40),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    color: c.gold,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI Personal Insights',
+                        style: TextStyle(
+                          color: c.text,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      Text(
+                        'Activity breakdown & daily reflection',
+                        style: TextStyle(
+                          color: c.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: c.gold.withAlpha(150)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAiInsights(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _AiInsightBottomSheet(provider: provider, m: m),
+    );
+  }
+}
+
+class _AiInsightBottomSheet extends StatelessWidget {
+  final AppProvider provider;
+  final _Metrics m;
+  const _AiInsightBottomSheet({required this.provider, required this.m});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        border: Border.all(color: c.sep),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: c.muted,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Flexible(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                children: [
+                  _CategoryTags(m: m),
+                  _AiSummaryCard(provider: provider, m: m),
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

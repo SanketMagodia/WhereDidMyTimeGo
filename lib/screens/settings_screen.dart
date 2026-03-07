@@ -100,6 +100,37 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: 24),
 
+          // ── ARTIFICIAL INTELLIGENCE ──────────────────────────────────────
+          _SectionLabel('LOCAL ARTIFICIAL INTELLIGENCE', c),
+          const SizedBox(height: 8),
+          _DataTile(
+            icon: Icons.smart_toy_rounded,
+            title: provider.isAiReady
+                ? 'AI Model Loaded'
+                : 'Import Local AI Model',
+            sub: provider.isAiReady
+                ? 'Gemma is successfully running offline'
+                : 'Select a downloaded .bin weights file',
+            c: c,
+            onTap: () async {
+              await provider.importAiModel();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: c.surface,
+                    content: Text(
+                      provider.isAiReady
+                          ? 'AI Model loaded successfully!'
+                          : 'Model import failed or cancelled.',
+                      style: TextStyle(color: c.text),
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 24),
+
           // ── DATA ────────────────────────────────────────────────────────
           _SectionLabel('DATA MANAGEMENT', c),
           const SizedBox(height: 8),

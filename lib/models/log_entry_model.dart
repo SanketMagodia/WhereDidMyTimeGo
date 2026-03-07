@@ -3,12 +3,14 @@ class LogEntry {
   final DateTime timestamp;
   final String text;
   final bool isSleep;
+  final String? category;
 
   LogEntry({
     required this.id,
     required this.timestamp,
     required this.text,
     this.isSleep = false,
+    this.category,
   });
 
   Map<String, dynamic> toJson() => {
@@ -16,6 +18,7 @@ class LogEntry {
     'timestamp': timestamp.toIso8601String(),
     'text': text,
     'isSleep': isSleep,
+    'category': category,
   };
 
   factory LogEntry.fromJson(Map<String, dynamic> json) => LogEntry(
@@ -23,12 +26,14 @@ class LogEntry {
     timestamp: DateTime.parse(json['timestamp']),
     text: json['text'],
     isSleep: json['isSleep'] ?? false,
+    category: json['category'],
   );
 
-  LogEntry copyWith({String? text}) => LogEntry(
+  LogEntry copyWith({String? text, String? category}) => LogEntry(
     id: id,
     timestamp: timestamp,
     text: text ?? this.text,
     isSleep: isSleep,
+    category: category ?? this.category,
   );
 }

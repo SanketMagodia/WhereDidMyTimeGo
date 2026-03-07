@@ -2,22 +2,15 @@ import 'dart:convert';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
 import '../models/task_model.dart';
-import '../models/todo_model.dart';
+import '../models/todo_folder_model.dart';
 
 class WidgetSyncService {
   static const String androidAppWidgetGroup = 'group.wdmtg.widget';
 
   static Future<void> updateWidgets(
     List<TaskModel> tasks,
-    List<TodoModel> todos,
+    List<TodoFolderModel> todos,
   ) async {
-    // 1. Prepare To-Do data
-    final activeTodos = todos.where((t) => !t.isDone).toList();
-    final todosJson = jsonEncode(
-      activeTodos.map((t) => {'text': t.text, 'isDone': t.isDone}).toList(),
-    );
-    await HomeWidget.saveWidgetData<String>('todos_data', todosJson);
-
     // 2. Prepare Schedule Data (Next 4 days: 0, 1, 2, 3)
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -66,10 +59,6 @@ class WidgetSyncService {
     await HomeWidget.updateWidget(
       name: 'ScheduleWidgetProvider',
       androidName: 'ScheduleWidgetProvider',
-    );
-    await HomeWidget.updateWidget(
-      name: 'TodoWidgetProvider',
-      androidName: 'TodoWidgetProvider',
     );
   }
 }

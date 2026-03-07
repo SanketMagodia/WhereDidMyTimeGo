@@ -74,7 +74,7 @@ class NotificationService {
           allowGeneratedReplies: true,
           inputs: [
             AndroidNotificationActionInput(
-              label: 'What were you doing $rangeLabel?',
+              label: 'What are you doing $rangeLabel?',
             ),
           ],
         ),
@@ -86,14 +86,14 @@ class NotificationService {
     try {
       final body = currentTaskTitle != null
           ? '$rangeLabel ● Ongoing: $currentTaskTitle'
-          : '$rangeLabel ● What were you doing?';
+          : '$rangeLabel ● What are you doing?';
 
       await _plugin.show(
         id: _logNotifId,
         title: 'WDMTG — Time Log',
         body: body,
         notificationDetails: details,
-        payload: slotEnd.millisecondsSinceEpoch.toString(),
+        payload: slotStart.millisecondsSinceEpoch.toString(),
       );
     } catch (e) {
       debugPrint('NotificationService.showLogPrompt error: $e');
