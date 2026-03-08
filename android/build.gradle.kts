@@ -19,6 +19,14 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// Silence obsolete Java 8 warnings by adding the lint flag to all Java compilation tasks
+// We do this without afterEvaluate to avoid "project already evaluated" crashes
+subprojects {
+    tasks.withType<JavaCompile> {
+        options.compilerArgs.add("-Xlint:-options")
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

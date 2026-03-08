@@ -1,4 +1,5 @@
-import 'dart:ui'; // For DartPluginRegistrant
+import 'dart:ui';
+import 'dart:isolate';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -12,12 +13,15 @@ import 'screens/splash_screen.dart';
 
 @pragma('vm:entry-point')
 void _backgroundNotificationHandler(NotificationResponse response) async {
+  // MUST initialize these FIRST in the background isolate
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+
   try {
     final text = NotificationService.extractReply(response);
     if (text != null) {
-      WidgetsFlutterBinding.ensureInitialized();
-      DartPluginRegistrant.ensureInitialized();
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload(); // Ensure we have latest data
       await prefs.setString('pending_log_reply', text);
 
       int timeMs = DateTime.now().millisecondsSinceEpoch;
@@ -26,13 +30,19 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
       }
 
       await prefs.setInt('pending_log_time', timeMs);
+
+      // Signal the main isolate to refresh if the app is foreground
+      final port = IsolateNameServer.lookupPortByName('wdmtg_notif_port');
+      port?.send(true);
     }
   } catch (e) {
     debugPrint("Background handler error: $e");
   } finally {
     try {
-      // MUST cancel the notification ID here so Android clears the UI loading spinner
-      FlutterLocalNotificationsPlugin().cancel(id: 1);
+      // Create a localized plugin instance just for cancelling
+      final plugin = FlutterLocalNotificationsPlugin();
+      // On some Android versions, small delay helps ensure OS captures the cancellation
+      await plugin.cancel(id: 1);
     } catch (_) {}
   }
 }
@@ -70,6 +80,14 @@ void main() async {
     onResponse: _onForegroundNotificationResponse,
     onBackgroundResponse: _backgroundNotificationHandler,
   );
+
+  final port = ReceivePort();
+  // Clean up any old mapping from Hot Restarts to prevent "already registered" errors
+  IsolateNameServer.removePortNameMapping('wdmtg_notif_port');
+  IsolateNameServer.registerPortWithName(port.sendPort, 'wdmtg_notif_port');
+  port.listen((_) {
+    _providerRef?.checkPendingNotifications();
+  });
   runApp(
     ChangeNotifierProvider(
       create: (_) {
@@ -119,15 +137,26 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
     });
   }
 
+  bool _isShowingDialog = false;
+
   void _onProviderChange() {
     final provider = Provider.of<AppProvider>(context, listen: false);
-    if (provider.isPromptOwed && mounted) {
+    if (provider.isPromptOwed && mounted && !_isShowingDialog) {
       _showLogPromptDialog(context, provider);
+    } else if (!provider.isPromptOwed && _isShowingDialog) {
+      // If the notification was answered externally, dismiss the dialog
+      _isShowingDialog = false;
+      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
   void _showLogPromptDialog(BuildContext context, AppProvider provider) {
-    provider.clearPrompt();
+    // We used to clear the prompt here, but now we keep it true until logged
+    // so that it can be closed externally if the user replies from the notification shade.
+    // However, we should still clear the system notification panel to avoid clutter.
+    NotificationService.instance.cancelLogNotification();
+
+    _isShowingDialog = true;
     final textController = TextEditingController();
 
     // Use the exact prompt time from the provider rather than DateTime.now() if answering the prompt
@@ -191,7 +220,7 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
             TextButton(
               onPressed: () {
                 provider.toggleAwakeStatus(false);
-                Navigator.of(ctx).pop();
+                // No Navigator.pop here; _onProviderChange handles it
               },
               child: Text(
                 'Sleeping',
@@ -217,7 +246,7 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
                     text: 'Continued: $lastText',
                   ),
                 );
-                Navigator.of(ctx).pop();
+                // No Navigator.pop here; _onProviderChange handles it
               },
               child: Text(
                 'Same as before',
@@ -242,14 +271,22 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
                         : 'No details provided',
                   ),
                 );
-                Navigator.of(ctx).pop();
+                // No Navigator.pop here; _onProviderChange handles it
               },
               child: const Text('Submit'),
             ),
           ],
         );
       },
-    );
+    ).then((_) {
+      _isShowingDialog = false;
+      // If it's still owed (e.g. user dismissed dialog by tapping outside - though dismissed here by false),
+      // we might want to clear it? But barrierDismissible is false, so this shouldn't happen
+      // except for system back button which might still work.
+      if (provider.isPromptOwed) {
+        provider.clearPrompt();
+      }
+    });
   }
 
   @override

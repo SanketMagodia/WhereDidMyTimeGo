@@ -58,7 +58,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkPendingNotifications();
+      checkPendingNotifications();
     }
   }
 
@@ -66,7 +66,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _loadSettings();
     await _loadPromptState();
     await _loadData();
-    await _checkPendingNotifications();
+    await checkPendingNotifications();
     _startTimer();
   }
 
@@ -91,7 +91,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _notificationShownAt = DateTime.fromMillisecondsSinceEpoch(ms);
   }
 
-  Future<void> _checkPendingNotifications() async {
+  Future<void> checkPendingNotifications() async {
     final prefs = await SharedPreferences.getInstance();
     // Must reload to get latest disk values, as background isolate writes to the same file
     await prefs.reload();
@@ -115,19 +115,26 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _themeMode = ThemeMode.values[tm.clamp(0, 2)];
 
     _aiModelPath = prefs.getString('ai_model_path');
-    if (_aiModelPath != null && File(_aiModelPath!).existsSync()) {
-      try {
-        await FlutterGemma.installModel(
-          modelType: ModelType.gemmaIt, // assuming instruction-tuned by default
-        ).fromFile(_aiModelPath!).install();
+    if (_aiModelPath != null) {
+      final modelFile = File(_aiModelPath!);
+      if (modelFile.existsSync()) {
+        try {
+          await FlutterGemma.installModel(
+            modelType: ModelType.gemmaIt,
+          ).fromFile(_aiModelPath!).install();
 
-        // Warm up the model
-        await FlutterGemma.getActiveModel(maxTokens: 512);
+          // Warm up the model
+          await FlutterGemma.getActiveModel(maxTokens: 512);
 
-        _isAiReady = true;
-      } catch (e) {
-        debugPrint("Failed to init Gemma: $e");
-        _isAiReady = false;
+          _isAiReady = true;
+        } catch (e) {
+          debugPrint("Failed to init Gemma: $e");
+          _isAiReady = false;
+        }
+      } else {
+        // Path no longer valid (file deleted or temp path expired)
+        _aiModelPath = null;
+        await prefs.remove('ai_model_path');
       }
     }
 
@@ -209,21 +216,46 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
 
       if (result != null && result.files.single.path != null) {
-        String path = result.files.single.path!;
+        String pickedPath = result.files.single.path!;
+        String fileName = result.files.single.name;
 
-        // Initialize Gemma with the new path
-        await FlutterGemma.installModel(
-          modelType: ModelType.gemmaIt,
-        ).fromFile(path).install();
+        final directory = await getApplicationDocumentsDirectory();
+        final targetPath = '${directory.path}/$fileName';
 
-        // Warm it up immediately so we know it worked
+        // 1. Clean up the PREVIOUS model if it exists and is different, to save GBs of space
+        final prefs = await SharedPreferences.getInstance();
+        final oldPath = prefs.getString('ai_model_path');
+        if (oldPath != null && oldPath != targetPath) {
+          try {
+            final oldFile = File(oldPath);
+            if (oldFile.existsSync()) {
+              await oldFile.delete();
+              debugPrint("Deleted previous model file to save space.");
+            }
+          } catch (e) {
+            debugPrint("Failed to delete old model: $e");
+          }
+        }
+
+        // 2. Copy the new model to the application's internal documents folder
+        // This is CRITICAL because file_picker paths are often temporary and expire.
+        if (pickedPath != targetPath) {
+          debugPrint("Copying model to persistent storage: $targetPath");
+          await File(pickedPath).copy(targetPath);
+        }
+
+        // 3. Initialize Gemma with the persistent path
+        await FlutterGemma.installModel(modelType: ModelType.gemmaIt)
+            .fromFile(targetPath)
+            .install();
+
+        // 4. Warm up
         await FlutterGemma.getActiveModel(maxTokens: 512);
 
-        _aiModelPath = path;
+        _aiModelPath = targetPath;
         _isAiReady = true;
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('ai_model_path', path);
+        await prefs.setString('ai_model_path', targetPath);
         notifyListeners();
       }
     } catch (e) {

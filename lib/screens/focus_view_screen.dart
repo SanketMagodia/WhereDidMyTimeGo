@@ -210,10 +210,10 @@ class FocusViewScreen extends StatelessWidget {
             SliverToBoxAdapter(
               child: _AiInsightLauncher(provider: provider, m: m),
             ),
+            SliverToBoxAdapter(child: _StatStrip(m: m)),
             SliverToBoxAdapter(
               child: _DonutCard(m: m, now: now),
             ),
-            SliverToBoxAdapter(child: _StatStrip(m: m)),
             SliverToBoxAdapter(
               child: _AnimatedFeed(m: m, now: now),
             ),
