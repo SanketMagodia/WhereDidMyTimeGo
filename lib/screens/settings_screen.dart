@@ -140,12 +140,17 @@ class SettingsScreen extends StatelessWidget {
             sub: 'Save logs & tasks to JSON',
             c: c,
             onTap: () async {
-              await provider.exportData();
+              final exportedPath = await provider.exportData();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     backgroundColor: c.surface,
-                    content: Text('Exported!', style: TextStyle(color: c.text)),
+                    content: Text(
+                      exportedPath != null
+                          ? 'Exported to: $exportedPath'
+                          : 'Export cancelled or failed',
+                      style: TextStyle(color: c.text),
+                    ),
                   ),
                 );
               }

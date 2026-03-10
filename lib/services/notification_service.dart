@@ -70,7 +70,9 @@ class NotificationService {
         AndroidNotificationAction(
           _replyActionId,
           'Log $rangeLabel',
-          showsUserInterface: false,
+          // Reliability-first: ensure Android routes action into Flutter callback.
+          // (Some OEMs drop background inline-reply callbacks when UI is not shown.)
+          showsUserInterface: true,
           allowGeneratedReplies: true,
           inputs: [
             AndroidNotificationActionInput(
@@ -115,12 +117,15 @@ class NotificationService {
 
   /// Extract reply text from a [NotificationResponse] action.
   static String? extractReply(NotificationResponse response) {
-    // If the user uses a device where clicking "Send" on the keyboard
-    // doesn't send the specific action ID, we fallback to checking if any
-    // input exists on the response.
-    final hasInput = response.input != null && response.input?.trim().isNotEmpty == true;
-    if (response.actionId != _replyActionId && !hasInput) return null;
-    
+    // Primary path: dedicated inline reply action.
+    if (response.actionId == _replyActionId) {
+      final text = response.input?.trim();
+      // Some OEMs deliver the action but drop/empty the input payload.
+      // We still return a fallback so logging pipeline is exercised.
+      return (text != null && text.isNotEmpty) ? text : 'No details provided';
+    }
+
+    // Fallback path: some devices may not report actionId correctly.
     final text = response.input?.trim();
     return (text != null && text.isNotEmpty) ? text : null;
   }

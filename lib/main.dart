@@ -41,6 +41,11 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
     try {
       // Create a localized plugin instance just for cancelling
       final plugin = FlutterLocalNotificationsPlugin();
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/launcher_icon',
+      );
+      const initSettings = InitializationSettings(android: androidSettings);
+      await plugin.initialize(settings: initSettings);
       // On some Android versions, small delay helps ensure OS captures the cancellation
       await plugin.cancel(id: 1);
     } catch (_) {}
@@ -49,20 +54,29 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
 
 AppProvider? _providerRef; // weak singleton ref for foreground handler
 
-void _onForegroundNotificationResponse(NotificationResponse response) {
+Future<void> _onForegroundNotificationResponse(NotificationResponse response) async {
   final text = NotificationService.extractReply(response);
-  if (text != null && _providerRef != null) {
-    DateTime time = DateTime.now();
-    if (response.payload != null) {
-      final parsed = int.tryParse(response.payload!);
-      if (parsed != null) {
-        time = DateTime.fromMillisecondsSinceEpoch(parsed);
-      }
+  if (text == null) return;
+
+  DateTime time = DateTime.now();
+  if (response.payload != null) {
+    final parsed = int.tryParse(response.payload!);
+    if (parsed != null) {
+      time = DateTime.fromMillisecondsSinceEpoch(parsed);
     }
-    _providerRef!.handleNotificationReply(text, time);
-    // Explicitly cancel the notification to clear the inline reply spinner
-    FlutterLocalNotificationsPlugin().cancel(id: 1);
   }
+
+  // Persist first so both foreground and background follow one reliable path.
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('pending_log_reply', text);
+  await prefs.setInt('pending_log_time', time.millisecondsSinceEpoch);
+
+  if (_providerRef == null) return;
+
+  // Dismiss in-app prompt immediately if user replied from notification shade.
+  _providerRef!.clearPrompt();
+  await _providerRef!.checkPendingNotifications();
+  await NotificationService.instance.cancelLogNotification();
 }
 
 void main() async {
@@ -151,10 +165,8 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
   }
 
   void _showLogPromptDialog(BuildContext context, AppProvider provider) {
-    // We used to clear the prompt here, but now we keep it true until logged
-    // so that it can be closed externally if the user replies from the notification shade.
-    // However, we should still clear the system notification panel to avoid clutter.
-    NotificationService.instance.cancelLogNotification();
+    // Keep the system notification active while showing the in-app prompt.
+    // This allows replying from the notification panel and preserves notification sound behavior.
 
     _isShowingDialog = true;
     final textController = TextEditingController();
@@ -228,7 +240,7 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 String lastText = 'Continued previous task';
                 for (var i = provider.logs.length - 1; i >= 0; i--) {
                   if (!provider.logs[i].isSleep) {
@@ -239,14 +251,16 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
                     break;
                   }
                 }
-                provider.addLog(
+                await provider.addLog(
                   LogEntry(
                     id: logTime.millisecondsSinceEpoch.toString(),
                     timestamp: logTime,
                     text: 'Continued: $lastText',
                   ),
                 );
-                // No Navigator.pop here; _onProviderChange handles it
+                if (ctx.mounted && Navigator.of(ctx).canPop()) {
+                  Navigator.of(ctx).pop();
+                }
               },
               child: Text(
                 'Same as before',
@@ -261,8 +275,8 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () {
-                provider.addLog(
+              onPressed: () async {
+                await provider.addLog(
                   LogEntry(
                     id: logTime.millisecondsSinceEpoch.toString(),
                     timestamp: logTime,
@@ -271,7 +285,9 @@ class _GlobalPromptWrapperState extends State<GlobalPromptWrapper> {
                         : 'No details provided',
                   ),
                 );
-                // No Navigator.pop here; _onProviderChange handles it
+                if (ctx.mounted && Navigator.of(ctx).canPop()) {
+                  Navigator.of(ctx).pop();
+                }
               },
               child: const Text('Submit'),
             ),

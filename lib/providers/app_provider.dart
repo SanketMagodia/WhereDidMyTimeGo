@@ -11,14 +11,17 @@ import '../models/task_model.dart';
 import '../models/log_entry_model.dart';
 import '../models/todo_folder_model.dart';
 import '../models/todo_model.dart';
+import '../models/expense_model.dart';
 import '../services/notification_service.dart';
 import '../services/widget_sync_service.dart';
 
 class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
+  static const bool _notificationServiceTestMode = false;
+
   List<TaskModel> _tasks = [];
   List<LogEntry> _logs = [];
-  List<TodoFolderModel> _todoFolders =
-      []; // Changed from _todos to _todoFolders
+  List<TodoFolderModel> _todoFolders = [];
+  List<ExpenseModel> _expenses = [];
 
   bool _isAwake = true;
   int _logIntervalMinutes = 60;
@@ -35,7 +38,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   List<TaskModel> get tasks => _tasks;
   List<LogEntry> get logs => _logs;
-  List<TodoFolderModel> get todoFolders => _todoFolders; // Changed getter
+  List<TodoFolderModel> get todoFolders => _todoFolders;
+  List<ExpenseModel> get expenses => _expenses;
   bool get isAwake => _isAwake;
   int get logIntervalMinutes => _logIntervalMinutes;
   bool get isPromptOwed => _isPromptOwed;
@@ -177,6 +181,13 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               .toList();
         }
 
+        if (data['expenses'] != null) {
+          _expenses = (data['expenses'] as List)
+              .map((e) => ExpenseModel.fromJson(e))
+              .toList();
+          _expenses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        }
+
         // Data Migration logic
         if (data['todo_folders'] != null) {
           _todoFolders = (data['todo_folders'] as List)
@@ -272,6 +283,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'tasks': _tasks.map((e) => e.toJson()).toList(),
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
+        'expenses': _expenses.map((e) => e.toJson()).toList(),
       };
       await file.writeAsString(json.encode(data));
 
@@ -285,12 +297,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      if (!_isAwake) return;
-
       final now = DateTime.now();
       final minuteOfDay = now.hour * 60 + now.minute;
+      final effectiveIntervalMinutes = _notificationServiceTestMode
+          ? 1
+          : _logIntervalMinutes;
 
-      if (minuteOfDay % _logIntervalMinutes != 0) return;
+      if (minuteOfDay % effectiveIntervalMinutes != 0) return;
+
+      if (!_isAwake) {
+        _addSleepLogIfNeeded(now, effectiveIntervalMinutes);
+        return;
+      }
 
       // Don't double-fire if already logged this exact minute
       if (_logs.isNotEmpty) {
@@ -307,7 +325,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       // If a full interval elapsed, they entirely missed it, so we auto-continue!
       if (_isPromptOwed && _notificationShownAt != null) {
         final diff = now.difference(_notificationShownAt!).inMinutes;
-        if (diff < _logIntervalMinutes - 1) {
+        if (diff < effectiveIntervalMinutes - 1) {
           return;
         } else {
           // A full interval passed, user ignored the prompt entirely!
@@ -350,13 +368,37 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       } catch (_) {}
 
       NotificationService.instance.showLogPrompt(
-        _logIntervalMinutes,
+        effectiveIntervalMinutes,
         slotStart: now,
-        slotEnd: now.add(Duration(minutes: _logIntervalMinutes)),
+        slotEnd: now.add(Duration(minutes: effectiveIntervalMinutes)),
         currentTaskTitle: currentTaskTitle,
       );
       notifyListeners();
     });
+  }
+
+  DateTime _slotStart(DateTime now, int intervalMinutes) {
+    final bucketMinute = (now.minute ~/ intervalMinutes) * intervalMinutes;
+    return DateTime(now.year, now.month, now.day, now.hour, bucketMinute);
+  }
+
+  void _addSleepLogIfNeeded(DateTime now, int intervalMinutes) {
+    final slot = _slotStart(now, intervalMinutes);
+    final alreadyLogged = _logs.any(
+      (l) => l.isSleep && l.timestamp == slot,
+    );
+    if (alreadyLogged) return;
+
+    _insertLog(
+      LogEntry(
+        id: slot.millisecondsSinceEpoch.toString(),
+        timestamp: slot,
+        text: 'Sleeping...',
+        isSleep: true,
+      ),
+    );
+    notifyListeners();
+    _saveData();
   }
 
   void clearPrompt() {
@@ -600,15 +642,13 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (awake) {
       _startTimer();
     } else {
-      // Create a sleep log entry
-      addLog(
-        LogEntry(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          timestamp: DateTime.now(),
-          text: "Sleeping...",
-          isSleep: true,
-        ),
-      );
+      clearPrompt();
+      await NotificationService.instance.cancelLogNotification();
+      final now = DateTime.now();
+      final effectiveIntervalMinutes = _notificationServiceTestMode
+          ? 1
+          : _logIntervalMinutes;
+      _addSleepLogIfNeeded(now, effectiveIntervalMinutes);
     }
   }
 
@@ -860,24 +900,109 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // ─── Export & Import ────────────────────────────────────────────────────────
-  Future<void> exportData() async {
-    try {
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'Please select an output file:',
-        fileName: 'timelog_export.json',
-      );
+  // ─── Expenses ────────────────────────────────────────────────────────────────
 
-      if (outputFile != null) {
-        final data = {
-          'tasks': _tasks.map((e) => e.toJson()).toList(),
-          'logs': _logs.map((e) => e.toJson()).toList(),
-        };
+  Future<void> addExpense(ExpenseModel expense) async {
+    _expenses.insert(0, expense);
+    notifyListeners();
+    await _saveData();
+    if (_isAiReady) _classifyExpense(expense.id, expense.title);
+  }
+
+  Future<void> updateExpense(ExpenseModel updated) async {
+    final idx = _expenses.indexWhere((e) => e.id == updated.id);
+    if (idx != -1) {
+      _expenses[idx] = updated;
+    } else {
+      _expenses.insert(0, updated);
+    }
+    _expenses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> removeExpense(String id) async {
+    _expenses.removeWhere((e) => e.id == id);
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> _classifyExpense(String id, String title) async {
+    try {
+      const cats = 'Food, Travelling, Clothes, Gadgets, Medical, Other';
+      final prompt =
+          "Classify this expense description strictly into one of these categories: $cats. "
+          "Return ONLY the category name, nothing else. "
+          "Description: $title";
+      final activeModel = await FlutterGemma.getActiveModel(maxTokens: 64);
+      final chat = await activeModel.createChat();
+      await chat.addQuery(Message(text: prompt, isUser: true));
+      final response = await chat.generateChatResponse();
+      final raw =
+          (response is TextResponse ? response.token : '').trim().replaceAll('.', '');
+      const allowed = ['Food', 'Travelling', 'Clothes', 'Gadgets', 'Medical'];
+      final matched =
+          allowed.firstWhere(
+            (c) => raw.toLowerCase().contains(c.toLowerCase()),
+            orElse: () => 'Other',
+          );
+      final idx = _expenses.indexWhere((e) => e.id == id);
+      if (idx != -1) {
+        _expenses[idx] = _expenses[idx].copyWith(category: matched);
+        notifyListeners();
+        await _saveData();
+      }
+    } catch (e) {
+      debugPrint('Expense classify error: $e');
+    }
+  }
+
+  // ─── Export & Import ────────────────────────────────────────────────────────
+  Future<String?> exportData() async {
+    try {
+      String? outputFile;
+      try {
+        outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: 'Please select an output file:',
+          fileName: 'timelog_export.json',
+        );
+      } catch (e) {
+        debugPrint("Export save picker unavailable: $e");
+        outputFile = null;
+      }
+      final data = {
+        'tasks': _tasks.map((e) => e.toJson()).toList(),
+        'logs': _logs.map((e) => e.toJson()).toList(),
+        'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
+        'expenses': _expenses.map((e) => e.toJson()).toList(),
+      };
+
+      // Some platforms may return null immediately if save-file picker is unsupported.
+      // Fallback to app documents so export still succeeds.
+      if (outputFile == null || outputFile.trim().isEmpty) {
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          outputFile = '${Directory.current.path}/timelog_export.json';
+        } else if (Platform.isAndroid) {
+          outputFile = '/storage/emulated/0/Download/timelog_export.json';
+        } else {
+          final dir = await getApplicationDocumentsDirectory();
+          outputFile = '${dir.path}/timelog_export.json';
+        }
+      }
+
+      try {
         await File(outputFile).writeAsString(json.encode(data));
+        return outputFile;
+      } catch (_) {
+        final dir = await getApplicationDocumentsDirectory();
+        final fallbackPath = '${dir.path}/timelog_export.json';
+        await File(fallbackPath).writeAsString(json.encode(data));
+        return fallbackPath;
       }
     } catch (e) {
       debugPrint("Export error: $e");
     }
+    return null;
   }
 
   Future<void> importData() async {
@@ -918,9 +1043,97 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           }
         }
 
+        if (data['todo_folders'] != null) {
+          final importedFolders = (data['todo_folders'] as List).map(
+            (e) => TodoFolderModel.fromJson(e),
+          );
+          for (final importedFolder in importedFolders) {
+            final existingFolderIdx = _todoFolders.indexWhere(
+              (f) => f.id == importedFolder.id,
+            );
+
+            if (existingFolderIdx == -1) {
+              final sortedTodos = List<TodoModel>.from(importedFolder.todos)
+                ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+              _todoFolders.add(importedFolder.copyWith(todos: sortedTodos));
+              changed = true;
+              continue;
+            }
+
+            final existingFolder = _todoFolders[existingFolderIdx];
+            final mergedTodos = List<TodoModel>.from(existingFolder.todos);
+            var folderChanged = false;
+
+            for (final importedTodo in importedFolder.todos) {
+              if (!mergedTodos.any((t) => t.id == importedTodo.id)) {
+                mergedTodos.add(importedTodo);
+                folderChanged = true;
+              }
+            }
+
+            if (folderChanged ||
+                existingFolder.title.trim() != importedFolder.title.trim()) {
+              mergedTodos.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+              _todoFolders[existingFolderIdx] = existingFolder.copyWith(
+                title: importedFolder.title,
+                todos: mergedTodos,
+              );
+              changed = true;
+            }
+          }
+        } else if (data['todos'] != null) {
+          // Backward compatibility with older exports that stored flat todos.
+          final importedTodos = (data['todos'] as List).map(
+            (e) => TodoModel.fromJson(e),
+          );
+          if (importedTodos.isNotEmpty) {
+            var uncategorizedIdx = _todoFolders.indexWhere(
+              (f) => f.title.trim().toLowerCase() == 'uncategorized',
+            );
+            if (uncategorizedIdx == -1) {
+              _todoFolders.add(TodoFolderModel(title: 'Uncategorized'));
+              uncategorizedIdx = _todoFolders.length - 1;
+              changed = true;
+            }
+
+            final target = _todoFolders[uncategorizedIdx];
+            final merged = List<TodoModel>.from(target.todos);
+            var folderChanged = false;
+            for (final todo in importedTodos) {
+              if (!merged.any((t) => t.id == todo.id)) {
+                merged.add(todo);
+                folderChanged = true;
+              }
+            }
+            if (folderChanged) {
+              merged.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+              _todoFolders[uncategorizedIdx] = target.copyWith(todos: merged);
+              changed = true;
+            }
+          }
+        }
+
+        if (data['expenses'] != null) {
+          final importedExpenses = (data['expenses'] as List).map(
+            (e) => ExpenseModel.fromJson(e),
+          );
+          for (final exp in importedExpenses) {
+            if (!_expenses.any((existing) => existing.id == exp.id)) {
+              _expenses.add(exp);
+              changed = true;
+            }
+          }
+        }
+
         if (changed) {
           _tasks.sort((a, b) => a.startTime.compareTo(b.startTime));
           _logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          _expenses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          for (int i = 0; i < _todoFolders.length; i++) {
+            final sortedTodos = List<TodoModel>.from(_todoFolders[i].todos)
+              ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+            _todoFolders[i] = _todoFolders[i].copyWith(todos: sortedTodos);
+          }
           notifyListeners();
           await _saveData();
         }

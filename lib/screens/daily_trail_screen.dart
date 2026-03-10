@@ -79,11 +79,6 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
     );
   }
 
-  void _shiftAll(bool up) {
-    final p = Provider.of<AppProvider>(context, listen: false);
-    p.shiftTasksForDay(_currentDate, Duration(minutes: up ? -30 : 30));
-  }
-
   // ── Resolve overlaps: push colliding tasks away ───────────────────────────
   // Called after a task is moved/resized. Sorts tasks by start, then cascades
   // pushdowns for any task that overlaps its predecessor.
@@ -202,29 +197,16 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
             onDaySelected: (sel, _) => setState(() => _currentDate = sel),
             onFormatChanged: (f) => setState(() => _calendarFormat = f),
             calendarBuilders: CalendarBuilders(
-              headerTitleBuilder: (ctx, day) => Row(
-                children: [
-                  const SizedBox(width: 4),
-                  Text(
-                    DateFormat('MMMM yyyy').format(day),
-                    style: TextStyle(
-                      color: c.text,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
+              headerTitleBuilder: (ctx, day) => Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  DateFormat('MMMM yyyy').format(day),
+                  style: TextStyle(
+                    color: c.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
                   ),
-                  const Spacer(),
-                  _iconBtn(
-                    Icons.keyboard_arrow_up_rounded,
-                    () => _shiftAll(true),
-                    tooltip: 'Shift all earlier',
-                  ),
-                  _iconBtn(
-                    Icons.keyboard_arrow_down_rounded,
-                    () => _shiftAll(false),
-                    tooltip: 'Shift all later',
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -250,19 +232,6 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
       ),
     );
   }
-
-  Widget _iconBtn(IconData icon, VoidCallback onTap, {String? tooltip}) =>
-      Tooltip(
-        message: tooltip ?? '',
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, color: AppTheme.textMuted, size: 20),
-          ),
-        ),
-      );
 
   Widget _buildSectionHeader(
     IconData icon,
@@ -322,6 +291,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
         .toList();
 
     const double totalH = 24 * 60 * _px;
+    final double bottomSafeScrollSpace = 130 + MediaQuery.of(context).padding.bottom;
 
     final intervalMinutes = provider.logIntervalMinutes;
 
@@ -367,7 +337,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
                               ? const NeverScrollableScrollPhysics()
                               : const ClampingScrollPhysics(),
                           child: SizedBox(
-                            height: totalH,
+                            height: totalH + bottomSafeScrollSpace,
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -698,6 +668,7 @@ class _HourlyLogBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = log.timestamp as DateTime;
     final bool isSleep = (log.isSleep as bool?) ?? false;
+    final effectiveInterval = isSleep ? 60 : intervalMinutes;
 
     // Always anchored to the start of the hour (bucketStart = log.timestamp)
     final double top = (t.hour * 60) * _px;
@@ -727,7 +698,7 @@ class _HourlyLogBlock extends StatelessWidget {
       right: 0,
       height: blockHeight,
       child: GestureDetector(
-        onTap: isSleep ? null : () => _showEditDialog(context, sections),
+        onTap: () => _showEditDialog(context, sections, effectiveInterval),
         child: Container(
           decoration: BoxDecoration(
             color: baseColor,
@@ -758,7 +729,7 @@ class _HourlyLogBlock extends StatelessWidget {
                 t.month,
                 t.day,
                 t.hour,
-                i * intervalMinutes,
+                i * effectiveInterval,
               );
               final timeLabel =
                   '${sectionTime.hour.toString().padLeft(2, '0')}:${sectionTime.minute.toString().padLeft(2, '0')}';
@@ -818,13 +789,17 @@ class _HourlyLogBlock extends StatelessWidget {
     );
   }
 
-  void _showEditDialog(BuildContext context, List<String> sections) {
+  void _showEditDialog(
+    BuildContext context,
+    List<String> sections,
+    int effectiveInterval,
+  ) {
     showDialog(
       context: context,
       builder: (_) => _LogEditDialog(
         log: log,
         sections: sections,
-        intervalMinutes: intervalMinutes,
+        intervalMinutes: effectiveInterval,
       ),
     );
   }

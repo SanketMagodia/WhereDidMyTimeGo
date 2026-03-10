@@ -117,7 +117,7 @@ class _TodosScreenState extends State<TodosScreen> {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          initiallyExpanded: true,
+          initiallyExpanded: false,
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           iconColor: c.text,
           collapsedIconColor: c.muted,
