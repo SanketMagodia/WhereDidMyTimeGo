@@ -63,7 +63,16 @@ class _ExpensesScreenState extends State<ExpensesScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _AddExpenseSheet(),
+      builder: (_) => const AddExpenseSheet(),
+    );
+  }
+
+  void _openFixedExpenses(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _FixedExpensesSheet(),
     );
   }
 
@@ -91,6 +100,68 @@ class _ExpensesScreenState extends State<ExpensesScreen>
               expenses: expenses,
               sortByAmount: _sortByAmount,
               onToggleSort: () => setState(() => _sortByAmount = !_sortByAmount),
+            ),
+            // ── Recurring shortcut row ─────────────────────────────────────
+            GestureDetector(
+              onTap: () => _openFixedExpenses(context),
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  color: c.surfaceMid,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: c.sep),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.repeat_rounded,
+                      size: 15,
+                      color: AppTheme.accentGold,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Fixed Monthly Expenses',
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Consumer<AppProvider>(
+                      builder: (context, p, child) {
+                        final count = p.fixedTemplates.length;
+                        if (count == 0) return const SizedBox.shrink();
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentGold.withAlpha(40),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '$count',
+                            style: const TextStyle(
+                              color: AppTheme.accentGold,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: c.muted,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
             ),
             _TabBar(controller: _tabs),
             Expanded(
@@ -1040,21 +1111,21 @@ class _ExpenseTile extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddExpenseSheet(existing: expense),
+      builder: (_) => AddExpenseSheet(existing: expense),
     );
   }
 }
 
 // ─── Add / Edit sheet ─────────────────────────────────────────────────────────
-class _AddExpenseSheet extends StatefulWidget {
+class AddExpenseSheet extends StatefulWidget {
   final ExpenseModel? existing;
-  const _AddExpenseSheet({this.existing});
+  const AddExpenseSheet({super.key, this.existing});
 
   @override
-  State<_AddExpenseSheet> createState() => _AddExpenseSheetState();
+  State<AddExpenseSheet> createState() => AddExpenseSheetState();
 }
 
-class _AddExpenseSheetState extends State<_AddExpenseSheet> {
+class AddExpenseSheetState extends State<AddExpenseSheet> {
   late final TextEditingController _titleCtrl;
   late final TextEditingController _amountCtrl;
   late final TextEditingController _noteCtrl;
@@ -1502,6 +1573,606 @@ class _EmptyState extends StatelessWidget {
             style: TextStyle(color: c.muted.withAlpha(150), fontSize: 11),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Fixed Monthly Expenses Sheet ────────────────────────────────────────────
+class _FixedExpensesSheet extends StatelessWidget {
+  const _FixedExpensesSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (_, scrollCtrl) {
+        return Container(
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              // handle
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.muted.withAlpha(80),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+              // title row
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 12, 8),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.repeat_rounded,
+                      color: AppTheme.accentGold,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Fixed Monthly Expenses',
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.add_rounded),
+                      color: c.primary,
+                      onPressed: () => _openAddTemplate(context),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Text(
+                  'These are added automatically on the 1st of every month '
+                  'and excluded from spending projections.',
+                  style: TextStyle(color: c.muted, fontSize: 11),
+                ),
+              ),
+              Divider(height: 1, color: c.sep),
+              Expanded(
+                child: Consumer<AppProvider>(
+                  builder: (context, provider, child) {
+                    final templates = provider.fixedTemplates;
+                    if (templates.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.repeat_rounded,
+                              color: c.muted,
+                              size: 40,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'No fixed expenses yet',
+                              style: TextStyle(
+                                color: c.muted,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tap + to add rent, subscriptions…',
+                              style: TextStyle(
+                                color: c.muted.withAlpha(150),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    final monthlyTotal = templates.fold<double>(
+                      0,
+                      (s, t) => s + t.amount,
+                    );
+                    return ListView(
+                      controller: scrollCtrl,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                      children: [
+                        // Monthly total pill
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentGold.withAlpha(20),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.accentGold.withAlpha(60),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_month_rounded,
+                                color: AppTheme.accentGold,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Total each month',
+                                style: TextStyle(
+                                  color: c.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                NumberFormat.currency(
+                                  symbol: '₹',
+                                  decimalDigits: 0,
+                                ).format(monthlyTotal),
+                                style: const TextStyle(
+                                  color: AppTheme.accentGold,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...templates.map(
+                          (t) => _FixedTemplateTile(template: t),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openAddTemplate(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _FixedTemplateEditSheet(),
+    );
+  }
+}
+
+class _FixedTemplateTile extends StatelessWidget {
+  final FixedExpenseTemplate template;
+  const _FixedTemplateTile({required this.template});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final color = _catColor(template.category);
+    return GestureDetector(
+      onTap: () => showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _FixedTemplateEditSheet(existing: template),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: c.surfaceMid,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: c.sep),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color.withAlpha(30),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(_catIcon(template.category), color: color, size: 17),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    template.title,
+                    style: TextStyle(
+                      color: c.text,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(25),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          template.category,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(
+                        Icons.repeat_rounded,
+                        size: 10,
+                        color: AppTheme.accentGold,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Every 1st',
+                        style: TextStyle(
+                          color: c.muted,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              NumberFormat.currency(symbol: '₹', decimalDigits: 0)
+                  .format(template.amount),
+              style: TextStyle(
+                color: c.text,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedTemplateEditSheet extends StatefulWidget {
+  final FixedExpenseTemplate? existing;
+  const _FixedTemplateEditSheet({this.existing});
+
+  @override
+  State<_FixedTemplateEditSheet> createState() =>
+      _FixedTemplateEditSheetState();
+}
+
+class _FixedTemplateEditSheetState extends State<_FixedTemplateEditSheet> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _amountCtrl;
+  late final TextEditingController _noteCtrl;
+  late String _category;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.existing;
+    _titleCtrl = TextEditingController(text: t?.title ?? '');
+    _amountCtrl = TextEditingController(
+      text: t != null ? t.amount.toStringAsFixed(0) : '',
+    );
+    _noteCtrl = TextEditingController(text: t?.note ?? '');
+    _category = t?.category ?? 'Other';
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _amountCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _titleCtrl.text.trim();
+    final amount = double.tryParse(_amountCtrl.text.trim());
+    if (title.isEmpty || amount == null || amount <= 0) return;
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    final existing = widget.existing;
+    if (existing == null) {
+      provider.addFixedTemplate(
+        FixedExpenseTemplate(
+          title: title,
+          amount: amount,
+          category: _category,
+          note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        ),
+      );
+    } else {
+      provider.updateFixedTemplate(
+        existing.copyWith(
+          title: title,
+          amount: amount,
+          category: _category,
+          note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        ),
+      );
+    }
+    Navigator.pop(context);
+  }
+
+  Future<void> _delete() async {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    final nav = Navigator.of(context);
+    final c = AppColors.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Remove fixed expense?',
+          style: TextStyle(
+            color: c.text,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        content: Text(
+          'It will stop being added on the 1st of each month.',
+          style: TextStyle(color: c.muted, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: c.muted)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: const Icon(Icons.delete_rounded, size: 16),
+            label: const Text(
+              'Remove',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      provider.removeFixedTemplate(widget.existing!.id);
+      nav.pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final isEdit = widget.existing != null;
+    final mq = MediaQuery.of(context);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: mq.size.height * 0.88),
+        child: Container(
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.muted.withAlpha(80),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text(
+                      isEdit ? 'Edit Fixed Expense' : 'New Fixed Expense',
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (isEdit)
+                      GestureDetector(
+                        onTap: _delete,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withAlpha(22),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.red.withAlpha(60)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.red,
+                                size: 15,
+                              ),
+                              SizedBox(width: 5),
+                              Text(
+                                'Remove',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.repeat_rounded,
+                      color: AppTheme.accentGold,
+                      size: 13,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Auto-added on the 1st of every month',
+                      style: TextStyle(color: c.muted, fontSize: 11),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _Field(
+                  controller: _titleCtrl,
+                  label: 'What is this fixed expense?',
+                  hint: 'Rent, Netflix, Gym membership…',
+                  keyboardType: TextInputType.text,
+                ),
+                const SizedBox(height: 12),
+                _Field(
+                  controller: _amountCtrl,
+                  label: 'Amount (₹)',
+                  hint: '0',
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                _Field(
+                  controller: _noteCtrl,
+                  label: 'Note (optional)',
+                  hint: 'Any detail…',
+                  keyboardType: TextInputType.text,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'CATEGORY',
+                  style: TextStyle(
+                    color: c.muted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: kExpenseCategories.map((cat) {
+                    final selected = _category == cat;
+                    final col = _catColor(cat);
+                    return GestureDetector(
+                      onTap: () => setState(() => _category = cat),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected ? col.withAlpha(220) : c.surfaceMid,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: selected ? col : c.sep,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _catIcon(cat),
+                              color: selected ? Colors.white : col,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              cat,
+                              style: TextStyle(
+                                color: selected ? Colors.white : c.text,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: c.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: _submit,
+                    child: Text(
+                      isEdit ? 'Save changes' : 'Add fixed expense',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

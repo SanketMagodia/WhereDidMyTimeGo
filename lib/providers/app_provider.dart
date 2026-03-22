@@ -14,6 +14,7 @@ import '../models/todo_model.dart';
 import '../models/expense_model.dart';
 import '../services/notification_service.dart';
 import '../services/widget_sync_service.dart';
+import '../services/calendar_sync_service.dart';
 
 class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const bool _notificationServiceTestMode = false;
@@ -22,14 +23,22 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<LogEntry> _logs = [];
   List<TodoFolderModel> _todoFolders = [];
   List<ExpenseModel> _expenses = [];
+  List<FixedExpenseTemplate> _fixedTemplates = [];
+  // "YYYY-MM" of the last month fixed expenses were applied
+  String _lastFixedAppliedMonth = '';
 
   bool _isAwake = true;
+  // When the user toggled to sleep — used to backfill all missed slots on wake.
+  DateTime? _sleepStartTime;
   int _logIntervalMinutes = 60;
   bool _isPromptOwed = false;
   ThemeMode _themeMode = ThemeMode.dark;
 
   bool _isAiReady = false;
   String? _aiModelPath;
+
+  bool _calendarSyncEnabled = false;
+  bool get calendarSyncEnabled => _calendarSyncEnabled;
 
   // Tracks whether the last notification was answered (for auto-continue)
   DateTime? _notificationShownAt;
@@ -40,6 +49,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<LogEntry> get logs => _logs;
   List<TodoFolderModel> get todoFolders => _todoFolders;
   List<ExpenseModel> get expenses => _expenses;
+  List<FixedExpenseTemplate> get fixedTemplates => _fixedTemplates;
   bool get isAwake => _isAwake;
   int get logIntervalMinutes => _logIntervalMinutes;
   bool get isPromptOwed => _isPromptOwed;
@@ -63,6 +73,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       checkPendingNotifications();
+      // If the user was sleeping while the app was backgrounded,
+      // backfill any interval slots the timer missed.
+      if (!_isAwake && _sleepStartTime != null) {
+        _backfillSleepLogs(DateTime.now());
+      }
     }
   }
 
@@ -113,7 +128,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    _calendarSyncEnabled = prefs.getBool('calendarSyncEnabled') ?? false;
+    final calId = prefs.getString('calendarId');
+    if (calId != null) CalendarSyncService.instance.setCalendarId(calId);
+
     _isAwake = prefs.getBool('isAwake') ?? true;
+    final sleepStartStr = prefs.getString('sleepStartTime');
+    _sleepStartTime = sleepStartStr != null ? DateTime.tryParse(sleepStartStr) : null;
+    // If app relaunched while still sleeping, backfill any missed slots immediately
+    if (!_isAwake && _sleepStartTime != null) {
+      _backfillSleepLogs(DateTime.now());
+    }
     _logIntervalMinutes = prefs.getInt('logIntervalMinutes') ?? 60;
     final tm = prefs.getInt('themeMode') ?? 0;
     _themeMode = ThemeMode.values[tm.clamp(0, 2)];
@@ -150,6 +175,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await prefs.setBool('isAwake', _isAwake);
     await prefs.setInt('logIntervalMinutes', _logIntervalMinutes);
     await prefs.setInt('themeMode', _themeMode.index);
+    await prefs.setBool('calendarSyncEnabled', _calendarSyncEnabled);
+    final calId = CalendarSyncService.instance.calendarId;
+    if (calId != null) {
+      await prefs.setString('calendarId', calId);
+    } else {
+      await prefs.remove('calendarId');
+    }
+    if (_sleepStartTime != null) {
+      await prefs.setString('sleepStartTime', _sleepStartTime!.toIso8601String());
+    } else {
+      await prefs.remove('sleepStartTime');
+    }
   }
 
   Future<void> setThemeMode(ThemeMode mode) async {
@@ -187,6 +224,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               .toList();
           _expenses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         }
+
+        if (data['fixed_templates'] != null) {
+          _fixedTemplates = (data['fixed_templates'] as List)
+              .map((e) => FixedExpenseTemplate.fromJson(e))
+              .toList();
+        }
+
+        _lastFixedAppliedMonth =
+            data['last_fixed_applied_month'] as String? ?? '';
+        _applyFixedExpensesIfNeeded();
 
         // Data Migration logic
         if (data['todo_folders'] != null) {
@@ -284,6 +331,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
         'expenses': _expenses.map((e) => e.toJson()).toList(),
+        'fixed_templates': _fixedTemplates.map((e) => e.toJson()).toList(),
+        'last_fixed_applied_month': _lastFixedAppliedMonth,
       };
       await file.writeAsString(json.encode(data));
 
@@ -399,6 +448,46 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
     notifyListeners();
     _saveData();
+  }
+
+  /// Fills every interval slot from [_sleepStartTime] to [until] with a sleep log.
+  /// Called when waking up or on app resume while sleeping.
+  void _backfillSleepLogs(DateTime until) {
+    if (_sleepStartTime == null) return;
+    final intervalMinutes = _notificationServiceTestMode ? 1 : _logIntervalMinutes;
+
+    // Start from the first interval boundary at or after sleep start
+    final start = _sleepStartTime!;
+    // Round start UP to the next slot boundary
+    final startMin = start.hour * 60 + start.minute;
+    final firstBucket = ((startMin ~/ intervalMinutes) + 1) * intervalMinutes;
+    final firstSlot = DateTime(start.year, start.month, start.day)
+        .add(Duration(minutes: firstBucket));
+
+    bool added = false;
+    var slot = firstSlot;
+    while (!slot.isAfter(until)) {
+      final alreadyLogged = _logs.any(
+        (l) => l.isSleep && l.timestamp == slot,
+      );
+      if (!alreadyLogged) {
+        _insertLog(
+          LogEntry(
+            id: slot.millisecondsSinceEpoch.toString(),
+            timestamp: slot,
+            text: 'Sleeping...',
+            isSleep: true,
+          ),
+        );
+        added = true;
+      }
+      slot = slot.add(Duration(minutes: intervalMinutes));
+    }
+
+    if (added) {
+      notifyListeners();
+      _saveData();
+    }
   }
 
   void clearPrompt() {
@@ -636,15 +725,24 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> toggleAwakeStatus(bool awake) async {
+    final now = DateTime.now();
     _isAwake = awake;
-    notifyListeners();
-    await saveSettings();
+
     if (awake) {
+      // Backfill every sleep slot from when they fell asleep until now
+      _backfillSleepLogs(now);
+      _sleepStartTime = null;
+      notifyListeners();
+      await saveSettings();
       _startTimer();
     } else {
       clearPrompt();
       await NotificationService.instance.cancelLogNotification();
-      final now = DateTime.now();
+      // Record exactly when they went to sleep
+      _sleepStartTime = now;
+      notifyListeners();
+      await saveSettings();
+      // Immediately log the current slot as sleeping
       final effectiveIntervalMinutes = _notificationServiceTestMode
           ? 1
           : _logIntervalMinutes;
@@ -658,14 +756,59 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await saveSettings();
   }
 
+  // ── Calendar sync public API ────────────────────────────────────────────────
+
+  /// Enables/disables calendar sync. On enable: requests permission and lets
+  /// the caller pick a calendar via [CalendarSyncService.getWritableCalendars].
+  Future<bool> setCalendarSync(bool enabled, {String? calendarId}) async {
+    if (enabled) {
+      final granted = await CalendarSyncService.instance.requestPermission();
+      if (!granted) return false;
+      if (calendarId != null) {
+        CalendarSyncService.instance.setCalendarId(calendarId);
+      }
+    }
+    _calendarSyncEnabled = enabled;
+    notifyListeners();
+    await saveSettings();
+    if (enabled) {
+      // Full sync on enable
+      final idMap = await CalendarSyncService.instance.fullSync(_tasks);
+      for (final entry in idMap.entries) {
+        final idx = _tasks.indexWhere((t) => t.id == entry.key);
+        if (idx != -1) {
+          _tasks[idx] = _tasks[idx].copyWith(calendarEventId: entry.value);
+        }
+      }
+      await _saveData();
+    }
+    return true;
+  }
+
+  // ── Task mutations (with calendar sync) ─────────────────────────────────────
+
   Future<void> addTask(TaskModel task) async {
-    _tasks.add(task);
+    var taskToAdd = task;
+    if (_calendarSyncEnabled) {
+      final eventId = await CalendarSyncService.instance.syncTask(task);
+      if (eventId != null) taskToAdd = task.copyWith(calendarEventId: eventId);
+    }
+    _tasks.add(taskToAdd);
     _tasks.sort((a, b) => a.startTime.compareTo(b.startTime));
     notifyListeners();
     await _saveData();
   }
 
   Future<void> removeTask(String id) async {
+    if (_calendarSyncEnabled) {
+      final task = _tasks.firstWhere(
+        (t) => t.id == id,
+        orElse: () => _tasks.first,
+      );
+      if (task.calendarEventId != null) {
+        await CalendarSyncService.instance.deleteEvent(task.calendarEventId!);
+      }
+    }
     _tasks.removeWhere((t) => t.id == id);
     notifyListeners();
     await _saveData();
@@ -674,7 +817,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> updateTask(TaskModel updatedTask) async {
     final index = _tasks.indexWhere((t) => t.id == updatedTask.id);
     if (index != -1) {
-      _tasks[index] = updatedTask;
+      var taskToUpdate = updatedTask;
+      if (_calendarSyncEnabled) {
+        final eventId =
+            await CalendarSyncService.instance.syncTask(updatedTask);
+        if (eventId != null) {
+          taskToUpdate = updatedTask.copyWith(calendarEventId: eventId);
+        }
+      }
+      _tasks[index] = taskToUpdate;
       _tasks.sort((a, b) => a.startTime.compareTo(b.startTime));
       notifyListeners();
       await _saveData();
@@ -688,12 +839,17 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (task.startTime.year == date.year &&
           task.startTime.month == date.month &&
           task.startTime.day == date.day) {
-        _tasks[i] = TaskModel(
-          id: task.id,
-          title: task.title,
+        var shifted = task.copyWith(
           startTime: task.startTime.add(shiftDuration),
           endTime: task.endTime.add(shiftDuration),
         );
+        if (_calendarSyncEnabled) {
+          final eventId = await CalendarSyncService.instance.syncTask(shifted);
+          if (eventId != null) {
+            shifted = shifted.copyWith(calendarEventId: eventId);
+          }
+        }
+        _tasks[i] = shifted;
         changed = true;
       }
     }
@@ -900,6 +1056,66 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // ─── Fixed Expense Templates ─────────────────────────────────────────────────
+
+  /// Auto-generates expense entries from fixed templates on the 1st of each month.
+  void _applyFixedExpensesIfNeeded() {
+    if (_fixedTemplates.isEmpty) return;
+    final now = DateTime.now();
+    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    if (_lastFixedAppliedMonth == currentMonth) return;
+
+    final firstOfMonth = DateTime(now.year, now.month, 1, 0, 1);
+    for (final t in _fixedTemplates) {
+      // Avoid adding duplicates if somehow called twice in the same month
+      final alreadyExists = _expenses.any(
+        (e) =>
+            e.isFixed &&
+            e.title == t.title &&
+            e.timestamp.year == now.year &&
+            e.timestamp.month == now.month,
+      );
+      if (!alreadyExists) {
+        _expenses.insert(
+          0,
+          ExpenseModel(
+            title: t.title,
+            amount: t.amount,
+            timestamp: firstOfMonth,
+            category: t.category,
+            note: t.note,
+            isFixed: true,
+          ),
+        );
+      }
+    }
+    _lastFixedAppliedMonth = currentMonth;
+    // Save asynchronously — fire-and-forget
+    _saveData();
+    notifyListeners();
+  }
+
+  Future<void> addFixedTemplate(FixedExpenseTemplate template) async {
+    _fixedTemplates.add(template);
+    notifyListeners();
+    await _saveData();
+    // Immediately apply for the current month if not yet applied
+    _applyFixedExpensesIfNeeded();
+  }
+
+  Future<void> updateFixedTemplate(FixedExpenseTemplate updated) async {
+    final idx = _fixedTemplates.indexWhere((t) => t.id == updated.id);
+    if (idx != -1) _fixedTemplates[idx] = updated;
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> removeFixedTemplate(String id) async {
+    _fixedTemplates.removeWhere((t) => t.id == id);
+    notifyListeners();
+    await _saveData();
+  }
+
   // ─── Expenses ────────────────────────────────────────────────────────────────
 
   Future<void> addExpense(ExpenseModel expense) async {
@@ -975,6 +1191,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
         'expenses': _expenses.map((e) => e.toJson()).toList(),
+        'fixed_templates': _fixedTemplates.map((e) => e.toJson()).toList(),
+        'last_fixed_applied_month': _lastFixedAppliedMonth,
       };
 
       // Some platforms may return null immediately if save-file picker is unsupported.
@@ -1120,6 +1338,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           for (final exp in importedExpenses) {
             if (!_expenses.any((existing) => existing.id == exp.id)) {
               _expenses.add(exp);
+              changed = true;
+            }
+          }
+        }
+
+        if (data['fixed_templates'] != null) {
+          final importedTemplates = (data['fixed_templates'] as List).map(
+            (e) => FixedExpenseTemplate.fromJson(e),
+          );
+          for (final t in importedTemplates) {
+            if (!_fixedTemplates.any((existing) => existing.id == t.id)) {
+              _fixedTemplates.add(t);
               changed = true;
             }
           }

@@ -24,7 +24,7 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
       await prefs.reload(); // Ensure we have latest data
       await prefs.setString('pending_log_reply', text);
 
-      int timeMs = DateTime.now().millisecondsSinceEpoch;
+      int timeMs = DateTime.now().millisecondsSinceE poch;
       if (response.payload != null) {
         timeMs = int.tryParse(response.payload!) ?? timeMs;
       }

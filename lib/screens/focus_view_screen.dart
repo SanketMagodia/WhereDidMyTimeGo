@@ -9,6 +9,7 @@ import '../models/expense_model.dart';
 import '../theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'expenses_screen.dart' show AddExpenseSheet;
 
 // ───────────────────────────────────────────────────────────────────────────
 // The app has TWO distinct data sources:
@@ -452,6 +453,15 @@ class FocusViewScreen extends StatelessWidget {
     return clean[0].toUpperCase() + clean.substring(1);
   }
 
+  void _addExpense(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const AddExpenseSheet(),
+    );
+  }
+
   void _logNow(BuildContext context) {
     final textController = TextEditingController();
     final provider = Provider.of<AppProvider>(context, listen: false);
@@ -512,6 +522,7 @@ class FocusViewScreen extends StatelessWidget {
       floatingActionButton: _QuickActionsFab(
         onLogNow: () => _logNow(context),
         onSchedule: () => _addTask(context, now),
+        onExpense: () => _addExpense(context),
       ),
       body: SafeArea(
         child: CustomScrollView(
@@ -548,8 +559,13 @@ class FocusViewScreen extends StatelessWidget {
 class _QuickActionsFab extends StatefulWidget {
   final VoidCallback onLogNow;
   final VoidCallback onSchedule;
+  final VoidCallback onExpense;
 
-  const _QuickActionsFab({required this.onLogNow, required this.onSchedule});
+  const _QuickActionsFab({
+    required this.onLogNow,
+    required this.onSchedule,
+    required this.onExpense,
+  });
 
   @override
   State<_QuickActionsFab> createState() => _QuickActionsFabState();
@@ -563,6 +579,7 @@ class _QuickActionsFabState extends State<_QuickActionsFab> {
     final colors = AppColors.of(context);
     final logColor = AppTheme.accentGold;
     final scheduleColor = AppTheme.accentPrimary;
+    const expenseColor = Color(0xFF50E3A4); // mint green
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -625,6 +642,34 @@ class _QuickActionsFabState extends State<_QuickActionsFab> {
                         icon: const Icon(Icons.auto_awesome_rounded, size: 16),
                         label: const Text(
                           'Schedule',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Transform.scale(
+                      scale: 0.9,
+                      child: FloatingActionButton.extended(
+                        heroTag: 'expense_fab',
+                        onPressed: () {
+                          setState(() => _open = false);
+                          widget.onExpense();
+                        },
+                        tooltip: 'Log expense',
+                        backgroundColor: expenseColor,
+                        foregroundColor: Colors.white,
+                        extendedPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                        icon: const Icon(
+                          Icons.account_balance_wallet_rounded,
+                          size: 16,
+                        ),
+                        label: const Text(
+                          'Expense',
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
@@ -2097,6 +2142,8 @@ class _ExpenseInsightCard extends StatelessWidget {
     final monthStart = DateTime(now.year, now.month, 1);
 
     double todayTotal = 0, yesterdayTotal = 0, monthTotal = 0;
+    // variable expenses only (non-fixed) used for projection
+    double monthVariableTotal = 0;
     final Map<String, double> todayCats = {};
     final Map<String, double> monthCats = {};
 
@@ -2111,13 +2158,16 @@ class _ExpenseInsightCard extends StatelessWidget {
       if (!e.timestamp.isBefore(monthStart)) {
         monthTotal += e.amount;
         monthCats[e.category] = (monthCats[e.category] ?? 0) + e.amount;
+        if (!e.isFixed) monthVariableTotal += e.amount;
       }
     }
 
     final daysElapsed = math.max(1, now.day);
-    final dailyAvg = monthTotal / daysElapsed;
+    // Projection is based only on variable (non-fixed) spending pace
+    final dailyAvg = monthVariableTotal / daysElapsed;
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final daysLeft = daysInMonth - now.day;
+    // projected = actual month total + variable daily avg × remaining days
     final projected = monthTotal + dailyAvg * daysLeft;
 
     final activeCats = todayCats.isNotEmpty ? todayCats : monthCats;

@@ -8,6 +8,7 @@
     android:padding="0dp"
     android:background="@android:color/transparent">
 
+    <!-- ── Sticky-note panel: task list + expense FAB ────────────────── -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
@@ -20,11 +21,29 @@
         <ListView
             android:id="@+id/schedule_list"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:divider="@android:color/transparent"
             android:dividerHeight="6dp" />
+
+        <!-- "+ Expense" button at the foot of the sticky note -->
+        <TextView
+            android:id="@+id/btn_add_expense"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/widget_add_btn_bg"
+            android:gravity="center"
+            android:text="＋ Expense"
+            android:textColor="#5C3D02"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"/>
+
     </LinearLayout>
 
+    <!-- ── Dark sidebar: day tiles ──────────────────────────────────── -->
     <LinearLayout
         android:layout_width="50dp"
         android:layout_height="match_parent"
@@ -35,7 +54,8 @@
         android:paddingEnd="4dp"
         android:background="@drawable/widget_bg"
         android:gravity="center_vertical">
-        
+
+        <!-- Tile 0 – selected by default; real state applied in provider -->
         <LinearLayout
             android:id="@+id/tile_0_box"
             android:layout_width="match_parent"
@@ -68,7 +88,7 @@
             android:orientation="vertical"
             android:gravity="center"
             android:layout_marginBottom="4dp"
-            android:background="@android:color/transparent">
+            android:background="@drawable/widget_item_unselected_bg">
             <TextView
                 android:id="@+id/tile_1_day"
                 android:layout_width="wrap_content"
@@ -92,7 +112,7 @@
             android:orientation="vertical"
             android:gravity="center"
             android:layout_marginBottom="4dp"
-            android:background="@android:color/transparent">
+            android:background="@drawable/widget_item_unselected_bg">
             <TextView
                 android:id="@+id/tile_2_day"
                 android:layout_width="wrap_content"
@@ -115,7 +135,7 @@
             android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="center"
-            android:background="@android:color/transparent">
+            android:background="@drawable/widget_item_unselected_bg">
             <TextView
                 android:id="@+id/tile_3_day"
                 android:layout_width="wrap_content"
@@ -130,6 +150,6 @@
                 android:textColor="#808080"
                 android:textSize="9sp"/>
         </LinearLayout>
-        
+
     </LinearLayout>
 </LinearLayout>

@@ -9,7 +9,6 @@ import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetProvider
 import es.antonborri.home_widget.HomeWidgetPlugin
 import org.json.JSONArray
-import org.json.JSONObject
 
 class ScheduleWidgetProvider : HomeWidgetProvider() {
     companion object {
@@ -20,17 +19,19 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
         if (intent.action == ACTION_TILE_CLICKED) {
             val offset = intent.getIntExtra("tile_offset", 0)
             val widgetData = HomeWidgetPlugin.getData(context)
-            widgetData.edit().putInt("selected_day_offset", offset).apply()
-            
-            // Trigger update
+
+            // Use commit() (synchronous) so onDataSetChanged reads the new
+            // value immediately — avoids the "still showing old day" race.
+            widgetData.edit().putInt("selected_day_offset", offset).commit()
+
             val appWidgetManager = AppWidgetManager.getInstance(context)
-            val componentName = android.content.ComponentName(context, ScheduleWidgetProvider::class.java)
+            val componentName = android.content.ComponentName(
+                context, ScheduleWidgetProvider::class.java)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
-            
-            // Notify data changed for the list
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.schedule_list)
-            
-            // Update the UI (highlights etc)
+
+            // Notify the list adapter first, then redraw chrome (highlights).
+            appWidgetManager.notifyAppWidgetViewDataChanged(
+                appWidgetIds, R.id.schedule_list)
             for (id in appWidgetIds) {
                 onUpdate(context, appWidgetManager, intArrayOf(id), widgetData)
             }
@@ -49,65 +50,90 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_schedule)
 
-            // Setup ListView adapter
+            // ── ListView adapter ──────────────────────────────────────────────
             val serviceIntent = Intent(context, ScheduleWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 putExtra("selected_day_offset", selectedOffset)
-                // Important: data must be unique for fresh factory instantiation
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME) + "?offset=$selectedOffset")
+                // Unique URI per offset forces Android to create a fresh factory.
+                data = Uri.parse(
+                    toUri(Intent.URI_INTENT_SCHEME) + "?wid=$appWidgetId&off=$selectedOffset")
             }
             views.setRemoteAdapter(R.id.schedule_list, serviceIntent)
 
-            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            // Item tap → open app on the schedule/tasks screen
+            val openScheduleIntent = Intent(context, MainActivity::class.java).apply {
                 action = Intent.ACTION_VIEW
                 data = Uri.parse("wdmtg://schedule")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            val appPendingIntent = PendingIntent.getActivity(context, 0, openAppIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            views.setPendingIntentTemplate(R.id.schedule_list, appPendingIntent)
+            val schedulePendingIntent = PendingIntent.getActivity(
+                context, 100, openScheduleIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setPendingIntentTemplate(R.id.schedule_list, schedulePendingIntent)
 
-            // Read tile data
+            // ── Expense "+" button ────────────────────────────────────────────
+            val openExpenseIntent = Intent(context, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = Uri.parse("wdmtg://expenses")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val expensePendingIntent = PendingIntent.getActivity(
+                context, 200, openExpenseIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_add_expense, expensePendingIntent)
+
+            // ── Day-selector tiles ────────────────────────────────────────────
             val tilesJsonStr = widgetData.getString("schedule_tiles_json", null)
             if (tilesJsonStr != null) {
                 try {
                     val tilesArray = JSONArray(tilesJsonStr)
-                    val boxIds = intArrayOf(R.id.tile_0_box, R.id.tile_1_box, R.id.tile_2_box, R.id.tile_3_box)
-                    val dayIds = intArrayOf(R.id.tile_0_day, R.id.tile_1_day, R.id.tile_2_day, R.id.tile_3_day)
-                    val countIds = intArrayOf(R.id.tile_0_count, R.id.tile_1_count, R.id.tile_2_count, R.id.tile_3_count)
+                    val boxIds = intArrayOf(
+                        R.id.tile_0_box, R.id.tile_1_box,
+                        R.id.tile_2_box, R.id.tile_3_box)
+                    val dayIds = intArrayOf(
+                        R.id.tile_0_day, R.id.tile_1_day,
+                        R.id.tile_2_day, R.id.tile_3_day)
+                    val countIds = intArrayOf(
+                        R.id.tile_0_count, R.id.tile_1_count,
+                        R.id.tile_2_count, R.id.tile_3_count)
 
                     for (i in 0 until 4) {
-                        val boxId = boxIds[i]
-                        val dayId = dayIds[i]
-                        val countId = countIds[i]
-
                         if (i < tilesArray.length()) {
                             val t = tilesArray.getJSONObject(i)
-                            views.setTextViewText(dayId, t.getString("label"))
-                            views.setTextViewText(countId, "${t.getInt("count")}")
-                            
-                            // Highlight selected tile
-                            if (i == selectedOffset) {
-                                views.setInt(boxId, "setBackgroundResource", R.drawable.widget_item_selected_bg)
-                                views.setTextColor(dayId, android.graphics.Color.WHITE)
-                                views.setTextColor(countId, android.graphics.Color.LTGRAY)
-                            } else {
-                                views.setInt(boxId, "setBackgroundResource", 0)
-                                views.setTextColor(dayId, android.graphics.Color.parseColor("#A0A0A0"))
-                                views.setTextColor(countId, android.graphics.Color.parseColor("#808080"))
-                            }
+                            views.setTextViewText(dayIds[i], t.getString("label"))
+                            views.setTextViewText(countIds[i], "${t.getInt("count")}")
 
-                            // Broadcast Click Intent
-                            val clickIntent = Intent(context, ScheduleWidgetProvider::class.java).apply {
+                            val isSelected = (i == selectedOffset)
+                            views.setInt(
+                                boxIds[i], "setBackgroundResource",
+                                if (isSelected) R.drawable.widget_item_selected_bg
+                                else R.drawable.widget_item_unselected_bg)
+                            views.setTextColor(
+                                dayIds[i],
+                                if (isSelected) android.graphics.Color.WHITE
+                                else android.graphics.Color.parseColor("#A0A0A0"))
+                            views.setTextColor(
+                                countIds[i],
+                                if (isSelected) android.graphics.Color.LTGRAY
+                                else android.graphics.Color.parseColor("#808080"))
+
+                            // Click → switch day
+                            val clickIntent = Intent(
+                                context, ScheduleWidgetProvider::class.java).apply {
                                 action = ACTION_TILE_CLICKED
                                 putExtra("tile_offset", i)
                             }
-                            val clickPendingIntent = PendingIntent.getBroadcast(
-                                context, i, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                            )
-                            views.setOnClickPendingIntent(boxId, clickPendingIntent)
+                            // Use i+10 as request code to avoid collisions with
+                            // the schedule (100) and expense (200) pending intents.
+                            val clickPending = PendingIntent.getBroadcast(
+                                context, i + 10, clickIntent,
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                            views.setOnClickPendingIntent(boxIds[i], clickPending)
                         } else {
-                            views.setTextViewText(dayId, "")
-                            views.setTextViewText(countId, "")
-                            views.setInt(boxId, "setBackgroundResource", 0)
+                            views.setTextViewText(dayIds[i], "")
+                            views.setTextViewText(countIds[i], "")
+                            views.setInt(boxIds[i], "setBackgroundResource",
+                                R.drawable.widget_item_unselected_bg)
                         }
                     }
                 } catch (e: Exception) {
