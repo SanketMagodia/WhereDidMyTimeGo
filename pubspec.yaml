@@ -47,6 +47,8 @@ dependencies:
   flutter_gemma: ^0.12.5
   uuid: ^4.5.3
   speech_to_text: ^7.3.0
+  http: ^1.6.0
+  device_calendar: 4.3.3
 
 dev_dependencies:
   flutter_test:
@@ -109,3 +111,6 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+dependency_overrides:
+  timezone: ^0.10.0

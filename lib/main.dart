@@ -11,6 +11,8 @@ import 'models/log_entry_model.dart';
 import 'services/notification_service.dart';
 import 'screens/splash_screen.dart';
 
+import 'package:timezone/data/latest_all.dart' as tz;
+
 @pragma('vm:entry-point')
 void _backgroundNotificationHandler(NotificationResponse response) async {
   // MUST initialize these FIRST in the background isolate
@@ -24,7 +26,7 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
       await prefs.reload(); // Ensure we have latest data
       await prefs.setString('pending_log_reply', text);
 
-      int timeMs = DateTime.now().millisecondsSinceE poch;
+      int timeMs = DateTime.now().millisecondsSinceEpoch;
       if (response.payload != null) {
         timeMs = int.tryParse(response.payload!) ?? timeMs;
       }
@@ -54,7 +56,9 @@ void _backgroundNotificationHandler(NotificationResponse response) async {
 
 AppProvider? _providerRef; // weak singleton ref for foreground handler
 
-Future<void> _onForegroundNotificationResponse(NotificationResponse response) async {
+Future<void> _onForegroundNotificationResponse(
+  NotificationResponse response,
+) async {
   final text = NotificationService.extractReply(response);
   if (text == null) return;
 
@@ -81,6 +85,7 @@ Future<void> _onForegroundNotificationResponse(NotificationResponse response) as
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  tz.initializeTimeZones();
 
   try {
     debugPrint("Initializing FlutterGemma...");

@@ -12,6 +12,8 @@ import '../models/log_entry_model.dart';
 import '../models/todo_folder_model.dart';
 import '../models/todo_model.dart';
 import '../models/expense_model.dart';
+import '../models/sip_model.dart';
+import '../models/stock_model.dart';
 import '../services/notification_service.dart';
 import '../services/widget_sync_service.dart';
 import '../services/calendar_sync_service.dart';
@@ -24,6 +26,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<TodoFolderModel> _todoFolders = [];
   List<ExpenseModel> _expenses = [];
   List<FixedExpenseTemplate> _fixedTemplates = [];
+  List<SipModel> _sips = [];
+  List<StockModel> _stocks = [];
   // "YYYY-MM" of the last month fixed expenses were applied
   String _lastFixedAppliedMonth = '';
 
@@ -50,6 +54,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<TodoFolderModel> get todoFolders => _todoFolders;
   List<ExpenseModel> get expenses => _expenses;
   List<FixedExpenseTemplate> get fixedTemplates => _fixedTemplates;
+  List<SipModel> get sips => _sips;
+  List<StockModel> get stocks => _stocks;
   bool get isAwake => _isAwake;
   int get logIntervalMinutes => _logIntervalMinutes;
   bool get isPromptOwed => _isPromptOwed;
@@ -134,7 +140,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     _isAwake = prefs.getBool('isAwake') ?? true;
     final sleepStartStr = prefs.getString('sleepStartTime');
-    _sleepStartTime = sleepStartStr != null ? DateTime.tryParse(sleepStartStr) : null;
+    _sleepStartTime = sleepStartStr != null
+        ? DateTime.tryParse(sleepStartStr)
+        : null;
     // If app relaunched while still sleeping, backfill any missed slots immediately
     if (!_isAwake && _sleepStartTime != null) {
       _backfillSleepLogs(DateTime.now());
@@ -183,7 +191,10 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       await prefs.remove('calendarId');
     }
     if (_sleepStartTime != null) {
-      await prefs.setString('sleepStartTime', _sleepStartTime!.toIso8601String());
+      await prefs.setString(
+        'sleepStartTime',
+        _sleepStartTime!.toIso8601String(),
+      );
     } else {
       await prefs.remove('sleepStartTime');
     }
@@ -228,6 +239,18 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         if (data['fixed_templates'] != null) {
           _fixedTemplates = (data['fixed_templates'] as List)
               .map((e) => FixedExpenseTemplate.fromJson(e))
+              .toList();
+        }
+
+        if (data['sips'] != null) {
+          _sips = (data['sips'] as List)
+              .map((e) => SipModel.fromJson(e))
+              .toList();
+        }
+
+        if (data['stocks'] != null) {
+          _stocks = (data['stocks'] as List)
+              .map((e) => StockModel.fromJson(e))
               .toList();
         }
 
@@ -303,9 +326,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         }
 
         // 3. Initialize Gemma with the persistent path
-        await FlutterGemma.installModel(modelType: ModelType.gemmaIt)
-            .fromFile(targetPath)
-            .install();
+        await FlutterGemma.installModel(
+          modelType: ModelType.gemmaIt,
+        ).fromFile(targetPath).install();
 
         // 4. Warm up
         await FlutterGemma.getActiveModel(maxTokens: 512);
@@ -332,6 +355,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
         'expenses': _expenses.map((e) => e.toJson()).toList(),
         'fixed_templates': _fixedTemplates.map((e) => e.toJson()).toList(),
+        'sips': _sips.map((e) => e.toJson()).toList(),
+        'stocks': _stocks.map((e) => e.toJson()).toList(),
         'last_fixed_applied_month': _lastFixedAppliedMonth,
       };
       await file.writeAsString(json.encode(data));
@@ -433,9 +458,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   void _addSleepLogIfNeeded(DateTime now, int intervalMinutes) {
     final slot = _slotStart(now, intervalMinutes);
-    final alreadyLogged = _logs.any(
-      (l) => l.isSleep && l.timestamp == slot,
-    );
+    final alreadyLogged = _logs.any((l) => l.isSleep && l.timestamp == slot);
     if (alreadyLogged) return;
 
     _insertLog(
@@ -454,22 +477,25 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Called when waking up or on app resume while sleeping.
   void _backfillSleepLogs(DateTime until) {
     if (_sleepStartTime == null) return;
-    final intervalMinutes = _notificationServiceTestMode ? 1 : _logIntervalMinutes;
+    final intervalMinutes = _notificationServiceTestMode
+        ? 1
+        : _logIntervalMinutes;
 
     // Start from the first interval boundary at or after sleep start
     final start = _sleepStartTime!;
     // Round start UP to the next slot boundary
     final startMin = start.hour * 60 + start.minute;
     final firstBucket = ((startMin ~/ intervalMinutes) + 1) * intervalMinutes;
-    final firstSlot = DateTime(start.year, start.month, start.day)
-        .add(Duration(minutes: firstBucket));
+    final firstSlot = DateTime(
+      start.year,
+      start.month,
+      start.day,
+    ).add(Duration(minutes: firstBucket));
 
     bool added = false;
     var slot = firstSlot;
     while (!slot.isAfter(until)) {
-      final alreadyLogged = _logs.any(
-        (l) => l.isSleep && l.timestamp == slot,
-      );
+      final alreadyLogged = _logs.any((l) => l.isSleep && l.timestamp == slot);
       if (!alreadyLogged) {
         _insertLog(
           LogEntry(
@@ -819,8 +845,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (index != -1) {
       var taskToUpdate = updatedTask;
       if (_calendarSyncEnabled) {
-        final eventId =
-            await CalendarSyncService.instance.syncTask(updatedTask);
+        final eventId = await CalendarSyncService.instance.syncTask(
+          updatedTask,
+        );
         if (eventId != null) {
           taskToUpdate = updatedTask.copyWith(calendarEventId: eventId);
         }
@@ -1089,6 +1116,33 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         );
       }
     }
+
+    // Also auto-add active SIPs as fixed expenses
+    for (final sip in _sips) {
+      if (sip.status != SipStatus.active) continue;
+      final sipTitle = 'SIP: ${sip.schemeName}';
+      final alreadyExists = _expenses.any(
+        (e) =>
+            e.isFixed &&
+            e.title == sipTitle &&
+            e.timestamp.year == now.year &&
+            e.timestamp.month == now.month,
+      );
+      if (!alreadyExists) {
+        _expenses.insert(
+          0,
+          ExpenseModel(
+            title: sipTitle,
+            amount: sip.monthlyAmount,
+            timestamp: firstOfMonth,
+            category: 'Other',
+            note: 'Auto-added from SIP investment',
+            isFixed: true,
+          ),
+        );
+      }
+    }
+
     _lastFixedAppliedMonth = currentMonth;
     // Save asynchronously — fire-and-forget
     _saveData();
@@ -1112,6 +1166,56 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> removeFixedTemplate(String id) async {
     _fixedTemplates.removeWhere((t) => t.id == id);
+    notifyListeners();
+    await _saveData();
+  }
+
+  // ─── SIP Investments ────────────────────────────────────────────────────────
+
+  Future<void> addSip(SipModel sip) async {
+    _sips.add(sip);
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> updateSip(SipModel updated) async {
+    final idx = _sips.indexWhere((s) => s.id == updated.id);
+    if (idx != -1) {
+      _sips[idx] = updated;
+    } else {
+      _sips.add(updated);
+    }
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> removeSip(String id) async {
+    _sips.removeWhere((s) => s.id == id);
+    notifyListeners();
+    await _saveData();
+  }
+
+  // ─── Stocks ────────────────────────────────────────────────────────────────
+
+  Future<void> addStock(StockModel stock) async {
+    _stocks.add(stock);
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> updateStock(StockModel stock) async {
+    final idx = _stocks.indexWhere((s) => s.id == stock.id);
+    if (idx != -1) {
+      _stocks[idx] = stock;
+    } else {
+      _stocks.add(stock);
+    }
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> removeStock(String id) async {
+    _stocks.removeWhere((s) => s.id == id);
     notifyListeners();
     await _saveData();
   }
@@ -1154,14 +1258,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       final chat = await activeModel.createChat();
       await chat.addQuery(Message(text: prompt, isUser: true));
       final response = await chat.generateChatResponse();
-      final raw =
-          (response is TextResponse ? response.token : '').trim().replaceAll('.', '');
+      final raw = (response is TextResponse ? response.token : '')
+          .trim()
+          .replaceAll('.', '');
       const allowed = ['Food', 'Travelling', 'Clothes', 'Gadgets', 'Medical'];
-      final matched =
-          allowed.firstWhere(
-            (c) => raw.toLowerCase().contains(c.toLowerCase()),
-            orElse: () => 'Other',
-          );
+      final matched = allowed.firstWhere(
+        (c) => raw.toLowerCase().contains(c.toLowerCase()),
+        orElse: () => 'Other',
+      );
       final idx = _expenses.indexWhere((e) => e.id == id);
       if (idx != -1) {
         _expenses[idx] = _expenses[idx].copyWith(category: matched);
@@ -1192,6 +1296,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
         'expenses': _expenses.map((e) => e.toJson()).toList(),
         'fixed_templates': _fixedTemplates.map((e) => e.toJson()).toList(),
+        'sips': _sips.map((e) => e.toJson()).toList(),
+        'stocks': _stocks.map((e) => e.toJson()).toList(),
         'last_fixed_applied_month': _lastFixedAppliedMonth,
       };
 
@@ -1350,6 +1456,30 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           for (final t in importedTemplates) {
             if (!_fixedTemplates.any((existing) => existing.id == t.id)) {
               _fixedTemplates.add(t);
+              changed = true;
+            }
+          }
+        }
+
+        if (data['sips'] != null) {
+          final importedSips = (data['sips'] as List).map(
+            (e) => SipModel.fromJson(e),
+          );
+          for (final s in importedSips) {
+            if (!_sips.any((existing) => existing.id == s.id)) {
+              _sips.add(s);
+              changed = true;
+            }
+          }
+        }
+
+        if (data['stocks'] != null) {
+          final importedStocks = (data['stocks'] as List).map(
+            (e) => StockModel.fromJson(e),
+          );
+          for (final stk in importedStocks) {
+            if (!_stocks.any((existing) => existing.id == stk.id)) {
+              _stocks.add(stk);
               changed = true;
             }
           }

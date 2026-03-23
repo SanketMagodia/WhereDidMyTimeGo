@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/expense_model.dart';
 import '../theme/app_theme.dart';
+import 'investments_screen.dart';
 
 // ─── Category visual config ───────────────────────────────────────────────────
 const _catIcons = {
@@ -18,12 +19,12 @@ const _catIcons = {
 };
 
 const _catColors = {
-  'Food': Color(0xFFFFD166),     // golden yellow — pops on orange
+  'Food': Color(0xFFFFD166), // golden yellow — pops on orange
   'Travelling': Color(0xFF4DAAFF), // sky blue
-  'Clothes': Color(0xFFCB80FF),  // soft purple
-  'Gadgets': Color(0xFF2EC4B6),  // teal
-  'Medical': Color(0xFF50E3A4),  // mint green
-  'Other': Color(0xFFAFAFCF),    // cool grey
+  'Clothes': Color(0xFFCB80FF), // soft purple
+  'Gadgets': Color(0xFF2EC4B6), // teal
+  'Medical': Color(0xFF50E3A4), // mint green
+  'Other': Color(0xFFAFAFCF), // cool grey
 };
 
 Color _catColor(String cat) => _catColors[cat] ?? const Color(0xFF7A7A9A);
@@ -99,68 +100,169 @@ class _ExpensesScreenState extends State<ExpensesScreen>
             _Header(
               expenses: expenses,
               sortByAmount: _sortByAmount,
-              onToggleSort: () => setState(() => _sortByAmount = !_sortByAmount),
+              onToggleSort: () =>
+                  setState(() => _sortByAmount = !_sortByAmount),
             ),
             // ── Recurring shortcut row ─────────────────────────────────────
-            GestureDetector(
-              onTap: () => _openFixedExpenses(context),
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(
-                  color: c.surfaceMid,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: c.sep),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.repeat_rounded,
-                      size: 15,
-                      color: AppTheme.accentGold,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Fixed Monthly Expenses',
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Row(
+                children: [
+                  // Fixed Monthly Expenses button
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _openFixedExpenses(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.surfaceMid,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: c.sep),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.repeat_rounded,
+                              size: 14,
+                              color: AppTheme.accentGold,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Fixed Monthly',
+                                style: TextStyle(
+                                  color: c.text,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Consumer<AppProvider>(
+                              builder: (context, p, child) {
+                                final count = p.fixedTemplates.length;
+                                if (count == 0) return const SizedBox.shrink();
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accentGold.withAlpha(40),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '$count',
+                                    style: const TextStyle(
+                                      color: AppTheme.accentGold,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: c.muted,
+                              size: 16,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Consumer<AppProvider>(
-                      builder: (context, p, child) {
-                        final count = p.fixedTemplates.length;
-                        if (count == 0) return const SizedBox.shrink();
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentGold.withAlpha(40),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '$count',
-                            style: const TextStyle(
-                              color: AppTheme.accentGold,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Investments button
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const InvestmentsScreen(),
                           ),
                         );
                       },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF1B5E20).withAlpha(60),
+                              const Color(0xFF2E7D32).withAlpha(40),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF4CAF50).withAlpha(80),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.trending_up_rounded,
+                              size: 14,
+                              color: Color(0xFF66BB6A),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Investments',
+                                style: TextStyle(
+                                  color: c.text,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Consumer<AppProvider>(
+                              builder: (context, p, child) {
+                                final count = p.sips.length;
+                                if (count == 0) return const SizedBox.shrink();
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF4CAF50,
+                                    ).withAlpha(40),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '$count',
+                                    style: const TextStyle(
+                                      color: Color(0xFF66BB6A),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: c.muted,
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    const Spacer(),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: c.muted,
-                      size: 18,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             _TabBar(controller: _tabs),
@@ -222,7 +324,8 @@ class _Header extends StatelessWidget {
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
     final thisMonth = expenses.where(
-      (e) => e.timestamp.isAfter(monthStart) || _sameDay(e.timestamp, monthStart),
+      (e) =>
+          e.timestamp.isAfter(monthStart) || _sameDay(e.timestamp, monthStart),
     );
     final total = thisMonth.fold<double>(0, (s, e) => s + e.amount);
 
@@ -267,7 +370,7 @@ class _Header extends StatelessWidget {
           Row(
             children: [
               const Text(
-                'EXPENSES',
+                'FINANCE',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 10,
@@ -303,7 +406,11 @@ class _Header extends StatelessWidget {
                     color: _catColor(topCat!).withAlpha(50),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(_catIcon(topCat!), color: _catColor(topCat!), size: 14),
+                  child: Icon(
+                    _catIcon(topCat!),
+                    color: _catColor(topCat!),
+                    size: 14,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -344,7 +451,9 @@ class _SortButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              sortByAmount ? Icons.attach_money_rounded : Icons.access_time_rounded,
+              sortByAmount
+                  ? Icons.attach_money_rounded
+                  : Icons.access_time_rounded,
               color: Colors.white,
               size: 12,
             ),
@@ -378,8 +487,8 @@ class _CategoryBar extends StatelessWidget {
     for (final e in expenses) {
       catTotals[e.category] = (catTotals[e.category] ?? 0) + e.amount;
     }
-    final sorted =
-        catTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final sorted = catTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,14 +604,18 @@ class _PeriodViewState extends State<_PeriodView> {
   DateTime _periodStart(DateTime now) {
     switch (widget.period) {
       case _Period.day:
-        return DateTime(now.year, now.month, now.day).subtract(
-          Duration(days: _offset),
-        );
+        return DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: _offset));
       case _Period.week:
         final monday = now.subtract(Duration(days: now.weekday - 1));
-        return DateTime(monday.year, monday.month, monday.day).subtract(
-          Duration(days: _offset * 7),
-        );
+        return DateTime(
+          monday.year,
+          monday.month,
+          monday.day,
+        ).subtract(Duration(days: _offset * 7));
       case _Period.month:
         final m = now.month - _offset;
         final y = now.year + (m - 1) ~/ 12;
@@ -567,8 +680,7 @@ class _PeriodViewState extends State<_PeriodView> {
 
   /// ISO-8601 week number for a given date.
   int _isoWeekNumber(DateTime date) {
-    final dayOfYear =
-        date.difference(DateTime(date.year, 1, 1)).inDays + 1;
+    final dayOfYear = date.difference(DateTime(date.year, 1, 1)).inDays + 1;
     final wday = date.weekday; // 1 = Mon … 7 = Sun
     return ((dayOfYear - wday + 10) / 7).floor();
   }
@@ -804,9 +916,7 @@ class _PeriodViewState extends State<_PeriodView> {
                             ),
                           ),
                         ],
-                        ...dayItems.map(
-                          (e) => _ExpenseTile(expense: e),
-                        ),
+                        ...dayItems.map((e) => _ExpenseTile(expense: e)),
                       ],
                     );
                   },
@@ -871,11 +981,13 @@ class _AnalyticsBar extends StatelessWidget {
           final amt = expenses
               .where(
                 (e) =>
-                    !e.timestamp.isBefore(bStart) &&
-                    e.timestamp.isBefore(bEnd),
+                    !e.timestamp.isBefore(bStart) && e.timestamp.isBefore(bEnd),
               )
               .fold<double>(0, (s, e) => s + e.amount);
-          return _Bucket(label: '${bStart.hour.toString().padLeft(2, '0')}h', amount: amt);
+          return _Bucket(
+            label: '${bStart.hour.toString().padLeft(2, '0')}h',
+            amount: amt,
+          );
         });
       case _Period.week:
         buckets = List.generate(7, (i) {
@@ -890,8 +1002,7 @@ class _AnalyticsBar extends StatelessWidget {
           return _Bucket(label: DateFormat('E').format(day), amount: amt);
         });
       case _Period.month:
-        final daysInMonth =
-            DateTime(start.year, start.month + 1, 0).day;
+        final daysInMonth = DateTime(start.year, start.month + 1, 0).day;
         final weeks = (daysInMonth / 7).ceil();
         buckets = List.generate(weeks, (i) {
           final wStart = start.add(Duration(days: i * 7));
@@ -903,8 +1014,7 @@ class _AnalyticsBar extends StatelessWidget {
           final amt = expenses
               .where(
                 (e) =>
-                    !e.timestamp.isBefore(wStart) &&
-                    e.timestamp.isBefore(wEnd),
+                    !e.timestamp.isBefore(wStart) && e.timestamp.isBefore(wEnd),
               )
               .fold<double>(0, (s, e) => s + e.amount);
           return _Bucket(label: 'W${i + 1}', amount: amt);
@@ -935,14 +1045,12 @@ class _AnalyticsBar extends StatelessWidget {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: buckets.map((b) {
-                final frac =
-                    maxAmt == 0 ? 0.0 : (b.amount / maxAmt).clamp(0.0, 1.0);
+                final frac = maxAmt == 0
+                    ? 0.0
+                    : (b.amount / maxAmt).clamp(0.0, 1.0);
                 // Reserve space for amount label if present; bar gets the rest
                 final amtReserved = b.amount > 0 ? 11.0 : 0.0;
-                final barH = math.max(
-                  3.0,
-                  (maxBarH - amtReserved) * frac,
-                );
+                final barH = math.max(3.0, (maxBarH - amtReserved) * frac);
 
                 return Expanded(
                   child: Padding(
@@ -1164,7 +1272,11 @@ class AddExpenseSheetState extends State<AddExpenseSheet> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(
           'Delete expense?',
-          style: TextStyle(color: c.text, fontSize: 15, fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: c.text,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         content: Text(
           '"${widget.existing!.title}" will be permanently removed.',
@@ -1184,7 +1296,10 @@ class AddExpenseSheetState extends State<AddExpenseSheet> {
               ),
             ),
             icon: const Icon(Icons.delete_rounded, size: 16),
-            label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w700)),
+            label: const Text(
+              'Delete',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
           ),
         ],
@@ -1276,214 +1391,212 @@ class AddExpenseSheetState extends State<AddExpenseSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: c.muted.withAlpha(80),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Text(
-                    isEdit ? 'Edit Expense' : 'New Expense',
-                    style: TextStyle(
-                      color: c.text,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.muted.withAlpha(80),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const Spacer(),
-                  if (isEdit)
-                    GestureDetector(
-                      onTap: () => _confirmDelete(context),
-                      child: Container(
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text(
+                      isEdit ? 'Edit Expense' : 'New Expense',
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (isEdit)
+                      GestureDetector(
+                        onTap: () => _confirmDelete(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withAlpha(22),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.red.withAlpha(60)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.red,
+                                size: 15,
+                              ),
+                              SizedBox(width: 5),
+                              Text(
+                                'Delete',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Title
+                _Field(
+                  controller: _titleCtrl,
+                  label: 'What did you spend on?',
+                  hint: 'Lunch, Uber, New shoes…',
+                  keyboardType: TextInputType.text,
+                ),
+                const SizedBox(height: 12),
+
+                // Amount
+                _Field(
+                  controller: _amountCtrl,
+                  label: 'Amount (₹)',
+                  hint: '0',
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+
+                // Note
+                _Field(
+                  controller: _noteCtrl,
+                  label: 'Note (optional)',
+                  hint: 'Any extra detail…',
+                  keyboardType: TextInputType.text,
+                ),
+                const SizedBox(height: 16),
+
+                // Date
+                GestureDetector(
+                  onTap: _pickDateTime,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.surfaceMid,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          color: c.muted,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          DateFormat(
+                            'EEE, d MMM yyyy · HH:mm',
+                          ).format(_timestamp),
+                          style: TextStyle(color: c.text, fontSize: 13),
+                        ),
+                        const Spacer(),
+                        Icon(Icons.edit_rounded, color: c.muted, size: 14),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Category chips
+                Text(
+                  'CATEGORY',
+                  style: TextStyle(
+                    color: c.muted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: kExpenseCategories.map((cat) {
+                    final selected = _category == cat;
+                    final col = _catColor(cat);
+                    return GestureDetector(
+                      onTap: () => setState(() => _category = cat),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.red.withAlpha(22),
-                          borderRadius: BorderRadius.circular(10),
+                          color: selected ? col.withAlpha(220) : c.surfaceMid,
+                          borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: Colors.red.withAlpha(60),
+                            color: selected ? col : c.sep,
+                            width: selected ? 0 : 1,
                           ),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.delete_outline_rounded,
-                              color: Colors.red,
-                              size: 15,
+                              _catIcon(cat),
+                              color: selected ? Colors.white : col,
+                              size: 14,
                             ),
-                            SizedBox(width: 5),
+                            const SizedBox(width: 5),
                             Text(
-                              'Delete',
+                              cat,
                               style: TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
+                                color: selected ? Colors.white : c.text,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 18),
-
-              // Title
-              _Field(
-                controller: _titleCtrl,
-                label: 'What did you spend on?',
-                hint: 'Lunch, Uber, New shoes…',
-                keyboardType: TextInputType.text,
-              ),
-              const SizedBox(height: 12),
-
-              // Amount
-              _Field(
-                controller: _amountCtrl,
-                label: 'Amount (₹)',
-                hint: '0',
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-
-              // Note
-              _Field(
-                controller: _noteCtrl,
-                label: 'Note (optional)',
-                hint: 'Any extra detail…',
-                keyboardType: TextInputType.text,
-              ),
-              const SizedBox(height: 16),
-
-              // Date
-              GestureDetector(
-                onTap: _pickDateTime,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.surfaceMid,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today_rounded,
-                        color: c.muted,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        DateFormat('EEE, d MMM yyyy · HH:mm').format(_timestamp),
-                        style: TextStyle(color: c.text, fontSize: 13),
-                      ),
-                      const Spacer(),
-                      Icon(Icons.edit_rounded, color: c.muted, size: 14),
-                    ],
-                  ),
+                    );
+                  }).toList(),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
-              // Category chips
-              Text(
-                'CATEGORY',
-                style: TextStyle(
-                  color: c.muted,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: kExpenseCategories.map((cat) {
-                  final selected = _category == cat;
-                  final col = _catColor(cat);
-                  return GestureDetector(
-                    onTap: () => setState(() => _category = cat),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? col.withAlpha(220)
-                            : c.surfaceMid,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: selected ? col : c.sep,
-                          width: selected ? 0 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _catIcon(cat),
-                            color: selected ? Colors.white : col,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            cat,
-                            style: TextStyle(
-                              color: selected ? Colors.white : c.text,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: c.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: c.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: _submit,
-                  child: Text(
-                    isEdit ? 'Save changes' : 'Add expense',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
+                    onPressed: _submit,
+                    child: Text(
+                      isEdit ? 'Save changes' : 'Add expense',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ),
-              ),
               ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 }
@@ -1716,10 +1829,7 @@ class _FixedExpensesSheet extends StatelessWidget {
                               const SizedBox(width: 8),
                               Text(
                                 'Total each month',
-                                style: TextStyle(
-                                  color: c.muted,
-                                  fontSize: 12,
-                                ),
+                                style: TextStyle(color: c.muted, fontSize: 12),
                               ),
                               const Spacer(),
                               Text(
@@ -1837,10 +1947,7 @@ class _FixedTemplateTile extends StatelessWidget {
                       const SizedBox(width: 3),
                       Text(
                         'Every 1st',
-                        style: TextStyle(
-                          color: c.muted,
-                          fontSize: 9,
-                        ),
+                        style: TextStyle(color: c.muted, fontSize: 9),
                       ),
                     ],
                   ),
@@ -1848,8 +1955,10 @@ class _FixedTemplateTile extends StatelessWidget {
               ),
             ),
             Text(
-              NumberFormat.currency(symbol: '₹', decimalDigits: 0)
-                  .format(template.amount),
+              NumberFormat.currency(
+                symbol: '₹',
+                decimalDigits: 0,
+              ).format(template.amount),
               style: TextStyle(
                 color: c.text,
                 fontSize: 14,
@@ -2120,9 +2229,7 @@ class _FixedTemplateEditSheetState extends State<_FixedTemplateEditSheet> {
                         decoration: BoxDecoration(
                           color: selected ? col.withAlpha(220) : c.surfaceMid,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: selected ? col : c.sep,
-                          ),
+                          border: Border.all(color: selected ? col : c.sep),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,

@@ -25,7 +25,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static const _deepLinkTabs = {
-    'schedule': 1, 'calendar': 1, 'todos': 2, 'expenses': 3,
+    'schedule': 1,
+    'calendar': 1,
+    'todos': 2,
+    'expenses': 3,
   };
 
   static const _screens = <Widget>[
@@ -113,10 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _NavBar(
-        currentIndex: _currentIndex,
-        onTap: _goTo,
-      ),
+      bottomNavigationBar: _NavBar(currentIndex: _currentIndex, onTap: _goTo),
     );
   }
 }
@@ -166,7 +166,7 @@ class _NavBar extends StatelessWidget {
             ),
             _NavItem(
               icon: Icons.account_balance_wallet_rounded,
-              label: 'Expenses',
+              label: 'Finance',
               selected: currentIndex == 3,
               onTap: () => onTap(3),
               c: c,
@@ -202,19 +202,14 @@ class _NavItem extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: selected ? c.primary : c.muted,
-              size: 22,
-            ),
+            Icon(icon, color: selected ? c.primary : c.muted, size: 22),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 color: selected ? c.primary : c.muted,
                 fontSize: 10,
-                fontWeight:
-                    selected ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ],
@@ -340,13 +335,10 @@ class _DrawerHandle extends StatelessWidget {
   }
 
   Widget _dot(AppColors c) => Container(
-        width: 4,
-        height: 4,
-        decoration: BoxDecoration(
-          color: c.muted,
-          shape: BoxShape.circle,
-        ),
-      );
+    width: 4,
+    height: 4,
+    decoration: BoxDecoration(color: c.muted, shape: BoxShape.circle),
+  );
 }
 
 // ── Radial mic button ─────────────────────────────────────────────────────────
@@ -366,7 +358,6 @@ class _RadialMicButton extends StatefulWidget {
 
 class _RadialMicButtonState extends State<_RadialMicButton>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _anim;
   OverlayEntry? _overlay;
   int? _hovered;
@@ -401,9 +392,9 @@ class _RadialMicButtonState extends State<_RadialMicButton>
   Offset _micGlobal = Offset.zero;
 
   List<Offset> get _arcOffsets => _angles.map((deg) {
-        final rad = deg * math.pi / 180;
-        return Offset(math.cos(rad) * _radius, -math.sin(rad) * _radius);
-      }).toList();
+    final rad = deg * math.pi / 180;
+    return Offset(math.cos(rad) * _radius, -math.sin(rad) * _radius);
+  }).toList();
 
   @override
   void initState() {
@@ -510,76 +501,86 @@ class _RadialMicButtonState extends State<_RadialMicButton>
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF3E7054)
-                          .withValues(alpha: 0.65 * t),
+                      color: const Color(
+                        0xFF3E7054,
+                      ).withValues(alpha: 0.65 * t),
                       blurRadius: 22,
                       spreadRadius: 5,
                     ),
                   ],
                 ),
-                child: const Icon(Icons.mic_rounded,
-                    color: Colors.white, size: 28),
+                child: const Icon(
+                  Icons.mic_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
             ),
 
             // Three option dots
             for (int i = 0; i < _opts.length; i++) ...[
-              Builder(builder: (_) {
-                final opt = _opts[i];
-                final arc = offsets[i];
-                final isHov = _hovered == i;
-                final pos = _micGlobal + arc * t;
-                final size = isHov ? 58.0 : 48.0;
-                return Positioned(
-                  left: pos.dx - size / 2,
-                  top: pos.dy - size / 2,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: size,
-                        height: size,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: opt.color,
-                          boxShadow: isHov
-                              ? [
-                                  BoxShadow(
-                                    color: opt.color
-                                        .withValues(alpha: 0.55),
-                                    blurRadius: 16,
-                                    spreadRadius: 3,
-                                  )
-                                ]
-                              : [],
-                        ),
-                        child: Icon(opt.icon,
-                            color: Colors.white, size: isHov ? 28 : 22),
-                      ),
-                      if (t > 0.75) ...[
-                        const SizedBox(height: 5),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+              Builder(
+                builder: (_) {
+                  final opt = _opts[i];
+                  final arc = offsets[i];
+                  final isHov = _hovered == i;
+                  final pos = _micGlobal + arc * t;
+                  final size = isHov ? 58.0 : 48.0;
+                  return Positioned(
+                    left: pos.dx - size / 2,
+                    top: pos.dy - size / 2,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: size,
+                          height: size,
                           decoration: BoxDecoration(
+                            shape: BoxShape.circle,
                             color: opt.color,
-                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: isHov
+                                ? [
+                                    BoxShadow(
+                                      color: opt.color.withValues(alpha: 0.55),
+                                      blurRadius: 16,
+                                      spreadRadius: 3,
+                                    ),
+                                  ]
+                                : [],
                           ),
-                          child: Text(
-                            opt.label,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                          child: Icon(
+                            opt.icon,
+                            color: Colors.white,
+                            size: isHov ? 28 : 22,
+                          ),
+                        ),
+                        if (t > 0.75) ...[
+                          const SizedBox(height: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: opt.color,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              opt.label,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                );
-              }),
+                    ),
+                  );
+                },
+              ),
             ],
           ],
         );
