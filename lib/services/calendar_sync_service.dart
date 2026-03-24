@@ -132,7 +132,8 @@ class CalendarSyncService {
         .map((e) {
           final s = e.start!;
           final eEnd = e.end ?? s.add(const Duration(minutes: 30));
-          final evId = e.eventId ?? '${s.millisecondsSinceEpoch}_${e.title ?? 'event'}';
+          final evId =
+              e.eventId ?? '${s.millisecondsSinceEpoch}_${e.title ?? 'event'}';
           return TaskModel(
             id: 'cal_$evId',
             title: (e.title == null || e.title!.trim().isEmpty)

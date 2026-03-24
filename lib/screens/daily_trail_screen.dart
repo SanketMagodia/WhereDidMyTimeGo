@@ -296,7 +296,8 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
         .toList();
 
     const double totalH = 24 * 60 * _px;
-    final double bottomSafeScrollSpace = 130 + MediaQuery.of(context).padding.bottom;
+    final double bottomSafeScrollSpace =
+        130 + MediaQuery.of(context).padding.bottom;
 
     final intervalMinutes = provider.logIntervalMinutes;
 
@@ -513,7 +514,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
             ),
             // ── Shift FAB — bottom right, above nav bar ─────────────────────
             Positioned(
-              bottom: 16,
+              bottom: 80,
               right: 16,
               child: _TaskTools(
                 currentDate: _currentDate,

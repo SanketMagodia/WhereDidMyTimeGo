@@ -111,18 +111,10 @@ class _TodosScreenState extends State<TodosScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final folder = folders[index];
-                    return _buildFolderCard(
-                      context,
-                      folder,
-                      provider,
-                      isLight,
-                    );
-                  },
-                  childCount: folders.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final folder = folders[index];
+                  return _buildFolderCard(context, folder, provider, isLight);
+                }, childCount: folders.length),
               ),
             ),
         ],
@@ -620,10 +612,7 @@ class _DailyChecklistCard extends StatelessWidget {
   final AppProvider provider;
   final VoidCallback onAdd;
 
-  const _DailyChecklistCard({
-    required this.provider,
-    required this.onAdd,
-  });
+  const _DailyChecklistCard({required this.provider, required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
@@ -658,7 +647,10 @@ class _DailyChecklistCard extends StatelessWidget {
                 ),
                 IconButton(
                   onPressed: onAdd,
-                  icon: Icon(Icons.add_circle_outline_rounded, color: c.primary),
+                  icon: Icon(
+                    Icons.add_circle_outline_rounded,
+                    color: c.primary,
+                  ),
                   tooltip: 'Add item',
                 ),
               ],
@@ -691,18 +683,30 @@ class _DailyChecklistCard extends StatelessWidget {
                     ),
                     title: Text(
                       item.title,
-                      style: TextStyle(color: c.text, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: c.text,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: Icon(Icons.edit_outlined, size: 20, color: c.muted),
+                          icon: Icon(
+                            Icons.edit_outlined,
+                            size: 20,
+                            color: c.muted,
+                          ),
                           onPressed: () => _editDaily(context, provider, item),
                         ),
                         IconButton(
-                          icon: Icon(Icons.delete_outline_rounded, size: 20, color: c.muted),
-                          onPressed: () => provider.removeDailyChecklistItem(item.id),
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            size: 20,
+                            color: c.muted,
+                          ),
+                          onPressed: () =>
+                              provider.removeDailyChecklistItem(item.id),
                         ),
                       ],
                     ),

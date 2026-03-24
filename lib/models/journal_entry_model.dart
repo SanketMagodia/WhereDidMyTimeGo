@@ -23,17 +23,16 @@ class JournalEntryModel {
         id: json['id'] as String,
         date: DateTime.parse(json['date'] as String),
         content: (json['content'] as String?) ?? '',
-        updatedAt: DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
+        updatedAt:
+            DateTime.tryParse((json['updatedAt'] as String?) ?? '') ??
             DateTime.now(),
       );
 
-  JournalEntryModel copyWith({
-    String? content,
-    DateTime? updatedAt,
-  }) => JournalEntryModel(
-    id: id,
-    date: date,
-    content: content ?? this.content,
-    updatedAt: updatedAt ?? this.updatedAt,
-  );
+  JournalEntryModel copyWith({String? content, DateTime? updatedAt}) =>
+      JournalEntryModel(
+        id: id,
+        date: date,
+        content: content ?? this.content,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
 }

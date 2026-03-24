@@ -36,8 +36,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   String _lastFixedAppliedMonth = '';
 
   List<DailyChecklistItemModel> _dailyChecklistItems = [];
+
   /// yyyy-MM-dd -> item ids checked that calendar day
   final Map<String, List<String>> _dailyChecklistChecksByDate = {};
+
+  String _userName = '';
 
   bool _isAwake = true;
   // When the user toggled to sleep — used to backfill all missed slots on wake.
@@ -57,8 +60,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get calendarReadOnly => _calendarReadOnly;
 
   /// Writable calendar: both import and push (app tasks → device calendar).
-  bool get mirrorsTasksToCalendar =>
-      _calendarSyncEnabled && !_calendarReadOnly;
+  bool get mirrorsTasksToCalendar => _calendarSyncEnabled && !_calendarReadOnly;
 
   // Tracks whether the last notification was answered (for auto-continue)
   DateTime? _notificationShownAt;
@@ -79,6 +81,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     copy.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
     return copy;
   }
+
+  String get userName => _userName;
   bool get isAwake => _isAwake;
   int get logIntervalMinutes => _logIntervalMinutes;
   bool get isPromptOwed => _isPromptOwed;
@@ -107,6 +111,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (!_isAwake && _sleepStartTime != null) {
         _backfillSleepLogs(DateTime.now());
       }
+      _syncLogsWithClock(DateTime.now());
+      _schedulePrompts(); // Ensure alarms are refreshed
     }
   }
 
@@ -115,7 +121,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _loadPromptState();
     await _loadData();
     await checkPendingNotifications();
-    _startTimer();
+    _startClockSync();
+    _schedulePrompts();
   }
 
   Future<void> _savePromptState() async {
@@ -231,6 +238,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await saveSettings();
   }
 
+  Future<void> setUserName(String name) async {
+    _userName = name.trim();
+    notifyListeners();
+    await _saveData();
+  }
+
   Future<File> _getDataFile() async {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/timelog_data.json');
@@ -242,6 +255,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (await file.exists()) {
         final content = await file.readAsString();
         final data = json.decode(content);
+
+        _userName = data['userName'] as String? ?? '';
 
         if (data['tasks'] != null) {
           _tasks = (data['tasks'] as List)
@@ -292,9 +307,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         // Data Migration logic
         if (data['daily_checklist_items'] != null) {
           _dailyChecklistItems = (data['daily_checklist_items'] as List)
-              .map((e) => DailyChecklistItemModel.fromJson(
-                    Map<String, dynamic>.from(e as Map),
-                  ))
+              .map(
+                (e) => DailyChecklistItemModel.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
               .toList();
         }
         if (data['daily_checklist_checks'] != null) {
@@ -401,6 +418,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final file = await _getDataFile();
       final data = {
+        'userName': _userName,
         'tasks': _tasks.map((e) => e.toJson()).toList(),
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
@@ -410,8 +428,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'sips': _sips.map((e) => e.toJson()).toList(),
         'stocks': _stocks.map((e) => e.toJson()).toList(),
         'last_fixed_applied_month': _lastFixedAppliedMonth,
-        'daily_checklist_items':
-            _dailyChecklistItems.map((e) => e.toJson()).toList(),
+        'daily_checklist_items': _dailyChecklistItems
+            .map((e) => e.toJson())
+            .toList(),
         'daily_checklist_checks': _dailyChecklistChecksByDate.map(
           (k, v) => MapEntry(k, v),
         ),
@@ -419,93 +438,146 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       await file.writeAsString(json.encode(data));
 
       // Update Android Home Widgets
-      WidgetSyncService.updateWidgets(_tasks, []);
+      _saveDataAndUpdateWidgets();
     } catch (e) {
       debugPrint("Error saving data: $e");
     }
   }
 
-  void _startTimer() {
+  void _saveDataAndUpdateWidgets() {
+    // _saveData() is already called by the caller of this method.
+    // This method is intended to handle post-save actions.
+    WidgetSyncService.updateWidgets(_tasks, _todoFolders);
+    _schedulePrompts(); // Ensure notifications update if task schedule changes
+  }
+
+  void _startClockSync() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      final now = DateTime.now();
-      final minuteOfDay = now.hour * 60 + now.minute;
-      final effectiveIntervalMinutes = _notificationServiceTestMode
-          ? 1
-          : _logIntervalMinutes;
+    _timer = Timer.periodic(const Duration(seconds: 45), (timer) {
+      _syncLogsWithClock(DateTime.now());
+    });
+    _syncLogsWithClock(DateTime.now()); // First sync immediately
+  }
 
-      if (minuteOfDay % effectiveIntervalMinutes != 0) return;
-
-      if (!_isAwake) {
-        _addSleepLogIfNeeded(now, effectiveIntervalMinutes);
-        return;
-      }
-
-      // Don't double-fire if already logged this exact minute
-      if (_logs.isNotEmpty) {
-        final last = _logs.last.timestamp;
-        final lastMinute = last.hour * 60 + last.minute;
-        final sameDay =
-            last.year == now.year &&
-            last.month == now.month &&
-            last.day == now.day;
-        if (sameDay && lastMinute == minuteOfDay && !_isPromptOwed) return;
-      }
-
-      // If we already prompted within the last interval length, don't double fire
-      // If a full interval elapsed, they entirely missed it, so we auto-continue!
-      if (_isPromptOwed && _notificationShownAt != null) {
-        final diff = now.difference(_notificationShownAt!).inMinutes;
-        if (diff < effectiveIntervalMinutes - 1) {
-          return;
-        } else {
-          // A full interval passed, user ignored the prompt entirely!
-          // Auto-continue the PREVIOUS ignored prompt
-          String prevText = 'Continued previous task';
-          for (var i = _logs.length - 1; i >= 0; i--) {
-            if (!_logs[i].isSleep) {
-              prevText = _logs[i].text.split(' • ').last;
-              if (prevText.startsWith('Continued: ')) {
-                prevText = prevText.substring(11).trim();
-              }
-              break;
-            }
-          }
-
-          _insertLog(
-            LogEntry(
-              id: _notificationShownAt!.millisecondsSinceEpoch.toString(),
-              timestamp: _notificationShownAt!,
-              text: 'Continued: $prevText',
-            ),
+  void _schedulePrompts() {
+    final effectiveIntervalMinutes = _notificationServiceTestMode
+        ? 1
+        : _logIntervalMinutes;
+    NotificationService.instance.scheduleUpcomingPrompts(
+      intervalMinutes: effectiveIntervalMinutes,
+      isAwake: _isAwake,
+      getTaskTitleAt: (time) {
+        try {
+          final ongoing = _tasks.firstWhere(
+            (t) => t.startTime.isBefore(time) && t.endTime.isAfter(time),
           );
-          _saveData();
-          _notificationShownAt = null;
-          _isPromptOwed = false;
+          return ongoing.title;
+        } catch (_) {
+          return null;
+        }
+      },
+    );
+  }
+
+  void _syncLogsWithClock(DateTime now) {
+    final effectiveIntervalMinutes = _notificationServiceTestMode
+        ? 1
+        : _logIntervalMinutes;
+
+    if (!_isAwake) {
+      _addSleepLogIfNeeded(now, effectiveIntervalMinutes);
+      return;
+    }
+
+    final currentBoundaryMin =
+        (now.minute ~/ effectiveIntervalMinutes) * effectiveIntervalMinutes;
+    final currentBoundary = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      currentBoundaryMin,
+    );
+
+    // 1. Check for completely missed intervals and backfill 'Continued previous task'
+    if (_logs.isNotEmpty) {
+      DateTime? lastTime;
+      String lastText = 'Continued previous task';
+      for (var i = _logs.length - 1; i >= 0; i--) {
+        if (!_logs[i].isSleep) {
+          lastTime = _logs[i].timestamp;
+          lastText = _logs[i].text.split(' • ').last;
+          if (lastText.startsWith('Continued: ')) {
+            lastText = lastText.substring(11).trim();
+          }
+          break;
         }
       }
 
-      _isPromptOwed = true;
-      _notificationShownAt = now;
+      if (lastTime != null) {
+        final int nextBucket =
+            ((lastTime.minute ~/ effectiveIntervalMinutes) + 1) *
+            effectiveIntervalMinutes;
+        var nextSlot = DateTime(
+          lastTime.year,
+          lastTime.month,
+          lastTime.day,
+          lastTime.hour,
+          0,
+        ).add(Duration(minutes: nextBucket));
+
+        bool changed = false;
+        while (nextSlot.isBefore(currentBoundary)) {
+          _insertLog(
+            LogEntry(
+              id: nextSlot.millisecondsSinceEpoch.toString(),
+              timestamp: nextSlot,
+              text: 'Continued: $lastText',
+            ),
+          );
+          changed = true;
+          nextSlot = nextSlot.add(Duration(minutes: effectiveIntervalMinutes));
+        }
+        if (changed) {
+          _saveData();
+        }
+      }
+    }
+
+    // 2. Determine if a prompt is owed for the CURRENT interval boundary
+    bool owesPrompt = true;
+    final hourStart = DateTime(
+      currentBoundary.year,
+      currentBoundary.month,
+      currentBoundary.day,
+      currentBoundary.hour,
+      0,
+    );
+    for (var i = _logs.length - 1; i >= 0; i--) {
+      if (!_logs[i].isSleep && _logs[i].timestamp.isAtSameMomentAs(hourStart)) {
+        final int currentSlotIndex =
+            (currentBoundary.minute ~/ effectiveIntervalMinutes).clamp(
+              0,
+              (60 ~/ effectiveIntervalMinutes) - 1,
+            );
+        final parts = _logs[i].text.split(' • ');
+        // Safely check if the corresponding string part is not actually 'Continued previous task' which we might have injected.
+        // However, if it's not empty, it counts as logged.
+        if (parts.length > currentSlotIndex &&
+            parts[currentSlotIndex].trim().isNotEmpty) {
+          owesPrompt = false;
+        }
+        break;
+      }
+    }
+
+    if (_isPromptOwed != owesPrompt ||
+        _notificationShownAt != (owesPrompt ? currentBoundary : null)) {
+      _isPromptOwed = owesPrompt;
+      _notificationShownAt = owesPrompt ? currentBoundary : null;
       _savePromptState();
-
-      // Find ongoing task
-      String? currentTaskTitle;
-      try {
-        final ongoing = _tasks.firstWhere(
-          (t) => t.startTime.isBefore(now) && t.endTime.isAfter(now),
-        );
-        currentTaskTitle = ongoing.title;
-      } catch (_) {}
-
-      NotificationService.instance.showLogPrompt(
-        effectiveIntervalMinutes,
-        slotStart: now,
-        slotEnd: now.add(Duration(minutes: effectiveIntervalMinutes)),
-        currentTaskTitle: currentTaskTitle,
-      );
       notifyListeners();
-    });
+    }
   }
 
   DateTime _slotStart(DateTime now, int intervalMinutes) {
@@ -751,7 +823,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _isPromptOwed = false;
     _notificationShownAt = null; // answered — no auto-continue
     _savePromptState();
-    await NotificationService.instance.cancelLogNotification();
+    await NotificationService.instance.clearActiveNotifications();
     notifyListeners();
     await _saveData();
   }
@@ -817,10 +889,11 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       _sleepStartTime = null;
       notifyListeners();
       await saveSettings();
-      _startTimer();
+      _syncLogsWithClock(now);
+      _schedulePrompts();
     } else {
       clearPrompt();
-      await NotificationService.instance.cancelLogNotification();
+      await NotificationService.instance.cancelAll();
       // Record exactly when they went to sleep
       _sleepStartTime = now;
       notifyListeners();
@@ -837,6 +910,8 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     _logIntervalMinutes = minutes;
     notifyListeners();
     await saveSettings();
+    _schedulePrompts();
+    _syncLogsWithClock(DateTime.now());
   }
 
   // ── Calendar sync public API ────────────────────────────────────────────────
@@ -1063,8 +1138,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (t.isEmpty) return;
     final idx = _dailyChecklistItems.indexWhere((e) => e.id == id);
     if (idx == -1) return;
-    _dailyChecklistItems[idx] =
-        _dailyChecklistItems[idx].copyWith(title: t);
+    _dailyChecklistItems[idx] = _dailyChecklistItems[idx].copyWith(title: t);
     notifyListeners();
     await _saveData();
   }
@@ -1560,6 +1634,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         outputFile = null;
       }
       final data = {
+        'userName': _userName,
         'tasks': _tasks.map((e) => e.toJson()).toList(),
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
@@ -1569,8 +1644,9 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'sips': _sips.map((e) => e.toJson()).toList(),
         'stocks': _stocks.map((e) => e.toJson()).toList(),
         'last_fixed_applied_month': _lastFixedAppliedMonth,
-        'daily_checklist_items':
-            _dailyChecklistItems.map((e) => e.toJson()).toList(),
+        'daily_checklist_items': _dailyChecklistItems
+            .map((e) => e.toJson())
+            .toList(),
         'daily_checklist_checks': _dailyChecklistChecksByDate.map(
           (k, v) => MapEntry(k, v),
         ),
@@ -1617,6 +1693,15 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         final data = json.decode(content);
 
         bool changed = false;
+
+        if (data['userName'] != null &&
+            (data['userName'] as String).trim().isNotEmpty) {
+          final importedName = (data['userName'] as String).trim();
+          if (_userName.isEmpty || _userName != importedName) {
+            _userName = importedName;
+            changed = true;
+          }
+        }
 
         if (data['tasks'] != null) {
           final importedTasks = (data['tasks'] as List).map(
@@ -1826,6 +1911,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               _dailyChecklistChecksByDate[e.key] = merged.toList();
               changed = true;
             }
+          }
+        }
+
+        if (data['last_fixed_applied_month'] != null) {
+          final importedMonth = data['last_fixed_applied_month'] as String;
+          // Only update if the imported month is "newer" or equal to ours
+          // to prevent re-triggering fixed templates right after an import.
+          if (importedMonth.compareTo(_lastFixedAppliedMonth) > 0) {
+            _lastFixedAppliedMonth = importedMonth;
+            changed = true;
           }
         }
 

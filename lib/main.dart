@@ -80,7 +80,7 @@ Future<void> _onForegroundNotificationResponse(
   // Dismiss in-app prompt immediately if user replied from notification shade.
   _providerRef!.clearPrompt();
   await _providerRef!.checkPendingNotifications();
-  await NotificationService.instance.cancelLogNotification();
+  await NotificationService.instance.clearActiveNotifications();
 }
 
 void main() async {

@@ -21,7 +21,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
       'color': AppTheme.accentGold,
       'title': 'Setup Your Preferences',
       'body':
-          'Go to settings inside the app to set your time log interval, customize notifications, and choose your favorite app theme.',
+          'Go to settings inside the app to set your time log interval, customize notifications, and choose your app theme.',
     },
     {
       'icon': Icons.calendar_month_rounded,
@@ -38,11 +38,39 @@ class _TutorialScreenState extends State<TutorialScreen> {
           'On the Home screen, you will dynamically see what you scheduled versus what you were actually doing.',
     },
     {
+      'icon': Icons.account_balance_wallet_rounded,
+      'color': const Color(0xFF4CAF50),
+      'title': 'Grow Your Wealth',
+      'body':
+          'Monitor your Mutual Funds, SIPs, Stocks, and Fixed Expenses inside beautiful, dynamic interactive charts.',
+    },
+    {
+      'icon': Icons.menu_book_rounded,
+      'color': const Color(0xFF9C27B0),
+      'title': 'Daily Journaling',
+      'body':
+          'Reflect on your day using an immersive, realistic digital diary. Tap the floating journal card on the home screen to begin.',
+    },
+    {
+      'icon': Icons.record_voice_over_rounded,
+      'color': AppTheme.accentBlue,
+      'title': 'AI Voice Assistant',
+      'body':
+          'Import the local AI model in settings to converse with a completely offline, intelligent voice assistant that analyzes your schedule.',
+    },
+    {
+      'icon': Icons.sync_rounded,
+      'color': const Color(0xFFFF9800),
+      'title': 'Calendar Sync',
+      'body':
+          'Sync seamlessly with your phone\'s native calendar to pull in external events right into your daily trail.',
+    },
+    {
       'icon': Icons.lock_person_rounded,
       'color': const Color(0xFF0EA5E9),
       'title': '100% Offline & Secure',
       'body':
-          'Everything is offline! Your data is safe with you. You can export your data anytime and import it on a new device to continue your progress.',
+          'Everything runs natively offline! Your data is safe. You can export your data anytime and import it across devices.',
     },
   ];
 

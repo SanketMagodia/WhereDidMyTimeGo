@@ -40,6 +40,12 @@ class SettingsBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // ── USER PROFILE ────────────────────────────────────────────────
+        _SectionLabel('USER PROFILE', c),
+        const SizedBox(height: 8),
+        _UserNameInput(provider: provider, c: c),
+        const SizedBox(height: 24),
+
         // ── APPEARANCE ──────────────────────────────────────────────────
         _SectionLabel('APPEARANCE', c),
         const SizedBox(height: 8),
@@ -68,7 +74,9 @@ class SettingsBody extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Center(child: _ThemeSegment(provider: provider, c: c)),
+                Center(
+                  child: _ThemeSegment(provider: provider, c: c),
+                ),
               ],
             ),
           ),
@@ -251,6 +259,56 @@ class SettingsBody extends StatelessWidget {
       );
 }
 
+class _UserNameInput extends StatefulWidget {
+  final AppProvider provider;
+  final AppColors c;
+  const _UserNameInput({required this.provider, required this.c});
+
+  @override
+  State<_UserNameInput> createState() => _UserNameInputState();
+}
+
+class _UserNameInputState extends State<_UserNameInput> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.provider.userName);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: widget.c.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: widget.c.sep),
+      ),
+      child: TextField(
+        controller: _ctrl,
+        style: TextStyle(color: widget.c.text, fontSize: 14),
+        onChanged: (val) {
+          widget.provider.setUserName(val);
+        },
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: 'Enter your name...',
+          hintStyle: TextStyle(color: widget.c.muted),
+          icon: Icon(Icons.person_rounded, color: widget.c.muted, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
 class _ThemeSegment extends StatelessWidget {
   final AppProvider provider;
   final AppColors c;
@@ -389,8 +447,7 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
 
     if (enable) {
       // Request permission first
-      final granted =
-          await CalendarSyncService.instance.requestPermission();
+      final granted = await CalendarSyncService.instance.requestPermission();
       if (!granted) {
         setState(() => _loading = false);
         if (mounted) {
@@ -406,14 +463,14 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
 
       // Any calendar we can read (import); writable ones can also mirror app → calendar.
       final calendars = await CalendarSyncService.instance.getAllCalendars();
-      final usable = calendars.where((c) => c.id != null && c.id!.isNotEmpty).toList();
+      final usable = calendars
+          .where((c) => c.id != null && c.id!.isNotEmpty)
+          .toList();
       if (usable.isEmpty) {
         setState(() => _loading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No calendars found on this device.'),
-            ),
+            const SnackBar(content: Text('No calendars found on this device.')),
           );
         }
         return;
@@ -485,7 +542,9 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
         if (imported < 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Could not enable calendar link (permission denied).'),
+              content: Text(
+                'Could not enable calendar link (permission denied).',
+              ),
               backgroundColor: Colors.redAccent,
             ),
           );
@@ -529,8 +588,10 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
       child: Column(
         children: [
           ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
             leading: Container(
               width: 36,
               height: 36,
@@ -555,8 +616,8 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
             subtitle: Text(
               enabled && calId != null
                   ? (widget.provider.calendarReadOnly
-                      ? 'Phone events import into Schedule (read-only calendar)'
-                      : 'Events import here; new/edited blocks also appear in your calendar')
+                        ? 'Phone events import into Schedule (read-only calendar)'
+                        : 'Events import here; new/edited blocks also appear in your calendar')
                   : 'Import calendar events into Schedule; writable calendars stay two-way',
               style: TextStyle(color: c.muted, fontSize: 11),
             ),

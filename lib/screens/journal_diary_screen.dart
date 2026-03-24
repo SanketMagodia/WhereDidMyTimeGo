@@ -63,7 +63,7 @@ class _JournalDiaryScreenState extends State<JournalDiaryScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          'My Diary',
+          'My Journal',
           style: TextStyle(color: c.text, fontWeight: FontWeight.w800),
         ),
       ),
@@ -119,8 +119,7 @@ class _JournalDiaryScreenState extends State<JournalDiaryScreen> {
     );
   }
 
-  int _dateToPage(DateTime d) =>
-      _anchorPage + d.difference(_anchorDate).inDays;
+  int _dateToPage(DateTime d) => _anchorPage + d.difference(_anchorDate).inDays;
 
   void _goPrevDay() {
     _pageController.previousPage(
@@ -399,10 +398,7 @@ class _JournalEditorSheetState extends State<_JournalEditorSheet> {
           const SizedBox(height: 8),
           Text(
             DateFormat('EEEE, d MMMM yyyy').format(widget.date),
-            style: TextStyle(
-              color: c.text,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: c.text, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           _FormatBar(
@@ -471,7 +467,10 @@ class _JournalEditorSheetState extends State<_JournalEditorSheet> {
                   await Provider.of<AppProvider>(
                     context,
                     listen: false,
-                  ).upsertJournal(date: widget.date, content: _ctrl.text.trim());
+                  ).upsertJournal(
+                    date: widget.date,
+                    content: _ctrl.text.trim(),
+                  );
                   if (mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.save_outlined),
@@ -581,11 +580,7 @@ class _LinedPaperPainter extends CustomPainter {
     for (double y = _paperLineGap; y < size.height; y += _paperLineGap) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), blueLine);
     }
-    canvas.drawLine(
-      const Offset(28, 0),
-      Offset(28, size.height),
-      redMargin,
-    );
+    canvas.drawLine(const Offset(28, 0), Offset(28, size.height), redMargin);
   }
 
   @override

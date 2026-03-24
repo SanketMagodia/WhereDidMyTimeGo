@@ -8,7 +8,7 @@ class SipModel {
   final String schemeName;
   final String fundHouse;
   final double monthlyAmount;
-  final int sipDay;         // day of month SIP is deducted (1–28)
+  final int sipDay; // day of month SIP is deducted (1–28)
   final DateTime startDate; // when the SIP was started
   final SipStatus status;
 
@@ -81,8 +81,8 @@ class SipModel {
         : null,
     installments: json['installments'] != null
         ? (json['installments'] as List)
-            .map((e) => SipInstallment.fromJson(e))
-            .toList()
+              .map((e) => SipInstallment.fromJson(e))
+              .toList()
         : [],
   );
 
@@ -137,11 +137,10 @@ class SipInstallment {
     'amount': amount,
   };
 
-  factory SipInstallment.fromJson(Map<String, dynamic> json) =>
-      SipInstallment(
-        date: DateTime.parse(json['date'] as String),
-        nav: (json['nav'] as num).toDouble(),
-        units: (json['units'] as num).toDouble(),
-        amount: (json['amount'] as num).toDouble(),
-      );
+  factory SipInstallment.fromJson(Map<String, dynamic> json) => SipInstallment(
+    date: DateTime.parse(json['date'] as String),
+    nav: (json['nav'] as num).toDouble(),
+    units: (json['units'] as num).toDouble(),
+    amount: (json['amount'] as num).toDouble(),
+  );
 }

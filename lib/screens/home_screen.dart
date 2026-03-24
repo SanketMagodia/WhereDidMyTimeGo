@@ -10,6 +10,8 @@ import 'todos_screen.dart';
 import 'expenses_screen.dart';
 import 'settings_screen.dart';
 import 'voice_assistant_sheet.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -44,6 +46,80 @@ class _HomeScreenState extends State<HomeScreen> {
     _pageController = PageController();
     _handleInitialWidgetLink();
     _widgetClickSub = HomeWidget.widgetClicked.listen(_onWidgetLink);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final provider = Provider.of<AppProvider>(context, listen: false);
+      if (provider.userName.trim().isEmpty) {
+        _showNamePrompt(context, provider);
+      }
+    });
+  }
+
+  void _showNamePrompt(BuildContext context, AppProvider provider) {
+    final c = AppColors.of(context);
+    final ctrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text(
+          'Lets figure out WhereDidYourTimeGo?',
+          style: TextStyle(color: c.text),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'But first, what should we call you?',
+              style: TextStyle(color: c.muted, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              style: TextStyle(color: c.text),
+              textCapitalization: TextCapitalization.words,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Your name',
+                hintStyle: TextStyle(color: c.muted.withValues(alpha: 0.5)),
+                filled: true,
+                fillColor: c.bg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onSubmitted: (val) {
+                final name = val.trim();
+                if (name.isNotEmpty) {
+                  provider.setUserName(name);
+                }
+                Navigator.pop(ctx);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              final name = ctrl.text.trim();
+              if (name.isNotEmpty) {
+                provider.setUserName(name);
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text(
+              'Let\'s Go',
+              style: TextStyle(color: c.primary, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -10,10 +10,10 @@ class DailyChecklistItemModel {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'orderIndex': orderIndex,
-      };
+    'id': id,
+    'title': title,
+    'orderIndex': orderIndex,
+  };
 
   factory DailyChecklistItemModel.fromJson(Map<String, dynamic> json) {
     return DailyChecklistItemModel(

@@ -50,7 +50,6 @@ class VoiceAssistantSheet extends StatefulWidget {
 
 class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _ringCtrl;
   final SpeechToText _speech = SpeechToText();
   bool _processingLock = false;
@@ -66,20 +65,20 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
   // Intent-specific accent colours
   Color get _accentColor => switch (widget.fixedIntent) {
     VoiceIntent.schedule => AppTheme.accentPrimary,
-    VoiceIntent.log      => AppTheme.accentGold,
-    VoiceIntent.expense  => const Color(0xFF50E3A4),
+    VoiceIntent.log => AppTheme.accentGold,
+    VoiceIntent.expense => const Color(0xFF50E3A4),
   };
 
   IconData get _accentIcon => switch (widget.fixedIntent) {
     VoiceIntent.schedule => Icons.calendar_today_rounded,
-    VoiceIntent.log      => Icons.edit_note_rounded,
-    VoiceIntent.expense  => Icons.account_balance_wallet_rounded,
+    VoiceIntent.log => Icons.edit_note_rounded,
+    VoiceIntent.expense => Icons.account_balance_wallet_rounded,
   };
 
   String get _modeLabel => switch (widget.fixedIntent) {
     VoiceIntent.schedule => 'SCHEDULE',
-    VoiceIntent.log      => 'LOG NOW',
-    VoiceIntent.expense  => 'EXPENSE',
+    VoiceIntent.log => 'LOG NOW',
+    VoiceIntent.expense => 'EXPENSE',
   };
 
   @override
@@ -179,46 +178,47 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
     return s.substring(start, end + 1);
   }
 
-  String _voicePromptForAttempt(
-    String dateStr,
-    String timeStr,
-    int attempt,
-  ) {
+  String _voicePromptForAttempt(String dateStr, String timeStr, int attempt) {
     final strict = attempt > 1
         ? '\n\nCRITICAL: Output exactly one JSON object only. '
-            'No markdown fences, no text before or after the `{`.'
+              'No markdown fences, no text before or after the `{`.'
         : '';
     return switch (widget.fixedIntent) {
       VoiceIntent.schedule =>
         'Extract schedule info from the voice command.\n'
-        'Today: $dateStr  Current time: $timeStr\n'
-        'Return ONLY valid JSON (single line or compact is fine): '
-        '{"title":"...","date":"YYYY-MM-DD","time":"HH:mm","duration_minutes":30}\n'
-        'Resolve relative days (today/tomorrow). Default 30 min if not mentioned.\n'
-        'Voice transcript: "$_transcript"$strict',
+            'Today: $dateStr  Current time: $timeStr\n'
+            'Return ONLY valid JSON (single line or compact is fine): '
+            '{"title":"...","date":"YYYY-MM-DD","time":"HH:mm","duration_minutes":30}\n'
+            'Resolve relative days (today/tomorrow). Default 30 min if not mentioned.\n'
+            'Voice transcript: "$_transcript"$strict',
 
       VoiceIntent.log =>
         'Extract the activity name from the voice command.\n'
-        'Return ONLY valid JSON: {"activity":"..."}\n'
-        'Voice transcript: "$_transcript"$strict',
+            'Return ONLY valid JSON: {"activity":"..."}\n'
+            'Voice transcript: "$_transcript"$strict',
 
       VoiceIntent.expense =>
         'Extract expense details from the voice command.\n'
-        'Return ONLY valid JSON: {"amount":0.0,"title":"..."} — amount is a number.\n'
-        'Voice transcript: "$_transcript"$strict',
+            'Return ONLY valid JSON: {"amount":0.0,"title":"..."} — amount is a number.\n'
+            'Voice transcript: "$_transcript"$strict',
     };
   }
 
-  _Parsed _parsedFromJsonMap(Map<String, dynamic> d, String dateStr, DateTime now) {
+  _Parsed _parsedFromJsonMap(
+    Map<String, dynamic> d,
+    String dateStr,
+    DateTime now,
+  ) {
     switch (widget.fixedIntent) {
       case VoiceIntent.schedule:
         final title = (d['title'] ?? _transcript).toString().trim();
         final rawDate = (d['date'] ?? dateStr).toString();
         final rawTime = (d['time'] ?? '09:00').toString();
-        final dur = (d['duration_minutes'] is num
-                ? (d['duration_minutes'] as num).toInt()
-                : 30)
-            .clamp(5, 480);
+        final dur =
+            (d['duration_minutes'] is num
+                    ? (d['duration_minutes'] as num).toInt()
+                    : 30)
+                .clamp(5, 480);
         final day = DateTime.tryParse(rawDate) ?? now;
         final parts = rawTime.split(':');
         final h = int.tryParse(parts.first) ?? 9;
@@ -355,25 +355,31 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
 
     switch (p.intent) {
       case VoiceIntent.schedule:
-        await provider.addTask(TaskModel(
-          id: now.millisecondsSinceEpoch.toString(),
-          title: p.scheduleTitle!,
-          startTime: p.scheduleStart!,
-          endTime: p.scheduleEnd!,
-        ));
+        await provider.addTask(
+          TaskModel(
+            id: now.millisecondsSinceEpoch.toString(),
+            title: p.scheduleTitle!,
+            startTime: p.scheduleStart!,
+            endTime: p.scheduleEnd!,
+          ),
+        );
       case VoiceIntent.log:
-        await provider.addLog(LogEntry(
-          id: now.millisecondsSinceEpoch.toString(),
-          timestamp: now,
-          text: p.logActivity!,
-        ));
+        await provider.addLog(
+          LogEntry(
+            id: now.millisecondsSinceEpoch.toString(),
+            timestamp: now,
+            text: p.logActivity!,
+          ),
+        );
       case VoiceIntent.expense:
-        await provider.addExpense(ExpenseModel(
-          title: p.expenseTitle!,
-          amount: p.expenseAmount!,
-          timestamp: now,
-          category: 'Other',
-        ));
+        await provider.addExpense(
+          ExpenseModel(
+            title: p.expenseTitle!,
+            amount: p.expenseAmount!,
+            timestamp: now,
+            category: 'Other',
+          ),
+        );
     }
 
     if (!mounted) return;
@@ -432,7 +438,9 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
                 if (_phase != _Phase.error)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: _voiceColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -481,10 +489,10 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
 
   String get _phaseLabel => switch (_phase) {
     _Phase.initialising => '● STARTING',
-    _Phase.listening    => '● LISTENING',
-    _Phase.processing   => '◎ THINKING',
-    _Phase.result       => '✓ READY',
-    _Phase.error        => '✕ ERROR',
+    _Phase.listening => '● LISTENING',
+    _Phase.processing => '◎ THINKING',
+    _Phase.result => '✓ READY',
+    _Phase.error => '✕ ERROR',
   };
 
   Widget _buildPhase(AppColors c) => switch (_phase) {
@@ -585,9 +593,17 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
   );
 
   List<String> get _tips => switch (widget.fixedIntent) {
-    VoiceIntent.schedule => ['"Meeting at 9am"', '"Gym tomorrow 6am"', '"Call at 3pm for 1hr"'],
-    VoiceIntent.log      => ['"I am coding"', '"Taking a break"', '"In a meeting"'],
-    VoiceIntent.expense  => ['"200 on food"', '"Paid 500 for cab"', '"Bought coffee for 80"'],
+    VoiceIntent.schedule => [
+      '"Meeting at 9am"',
+      '"Gym tomorrow 6am"',
+      '"Call at 3pm for 1hr"',
+    ],
+    VoiceIntent.log => ['"I am coding"', '"Taking a break"', '"In a meeting"'],
+    VoiceIntent.expense => [
+      '"200 on food"',
+      '"Paid 500 for cab"',
+      '"Bought coffee for 80"',
+    ],
   };
 
   // ── Processing UI ───────────────────────────────────────────────────────────
@@ -626,10 +642,7 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: SweepGradient(
-                colors: [
-                  _accentColor.withValues(alpha: 0),
-                  _accentColor,
-                ],
+                colors: [_accentColor.withValues(alpha: 0), _accentColor],
               ),
             ),
             child: Center(
@@ -640,8 +653,11 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
                   shape: BoxShape.circle,
                   color: c.surface,
                 ),
-                child:
-                    Icon(Icons.auto_awesome_rounded, size: 20, color: _accentColor),
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 20,
+                  color: _accentColor,
+                ),
               ),
             ),
           ),
@@ -691,13 +707,11 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
             child: ElevatedButton.icon(
               onPressed: _confirm,
               icon: const Icon(Icons.check_rounded, size: 18),
-              label: Text(
-                switch (p.intent) {
-                  VoiceIntent.schedule => 'Schedule it',
-                  VoiceIntent.log      => 'Log it now',
-                  VoiceIntent.expense  => 'Add expense',
-                },
-              ),
+              label: Text(switch (p.intent) {
+                VoiceIntent.schedule => 'Schedule it',
+                VoiceIntent.log => 'Log it now',
+                VoiceIntent.expense => 'Add expense',
+              }),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _accentColor,
                 foregroundColor: Colors.white,
@@ -791,7 +805,10 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
           ),
         ),
         const SizedBox(height: 6),
-        Text('Listening again…', style: TextStyle(color: c.muted, fontSize: 13)),
+        Text(
+          'Listening again…',
+          style: TextStyle(color: c.muted, fontSize: 13),
+        ),
       ],
     ),
   );
@@ -827,29 +844,31 @@ class _RingMic extends StatelessWidget {
             children: [
               // Three staggered expanding rings
               for (int i = 0; i < rings; i++) ...[
-                Builder(builder: (_) {
-                  final phase = (ctrl.value + i / rings) % 1.0;
-                  final size = base + phase * maxExtra;
-                  final opacity = active
-                      ? ((1.0 - phase) * 0.45).clamp(0.0, 1.0)
-                      : 0.0;
-                  final ringColor = i == 0
-                      ? color
-                      : i == 1
-                          ? Color.lerp(color, Colors.white, 0.4)!
-                          : Color.lerp(color, const Color(0xFF50E3A4), 0.5)!;
-                  return Opacity(
-                    opacity: opacity,
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: ringColor, width: 1.5),
+                Builder(
+                  builder: (_) {
+                    final phase = (ctrl.value + i / rings) % 1.0;
+                    final size = base + phase * maxExtra;
+                    final opacity = active
+                        ? ((1.0 - phase) * 0.45).clamp(0.0, 1.0)
+                        : 0.0;
+                    final ringColor = i == 0
+                        ? color
+                        : i == 1
+                        ? Color.lerp(color, Colors.white, 0.4)!
+                        : Color.lerp(color, const Color(0xFF50E3A4), 0.5)!;
+                    return Opacity(
+                      opacity: opacity,
+                      child: Container(
+                        width: size,
+                        height: size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: ringColor, width: 1.5),
+                        ),
                       ),
-                    ),
-                  );
-                }),
+                    );
+                  },
+                ),
               ],
 
               // Tap target
@@ -861,10 +880,7 @@ class _RingMic extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [
-                        Color.lerp(color, Colors.white, 0.3)!,
-                        color,
-                      ],
+                      colors: [Color.lerp(color, Colors.white, 0.3)!, color],
                       center: const Alignment(-0.3, -0.3),
                     ),
                     boxShadow: [
@@ -906,10 +922,7 @@ class _ResultCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.1),
-            color.withValues(alpha: 0.03),
-          ],
+          colors: [color.withValues(alpha: 0.1), color.withValues(alpha: 0.03)],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.25), width: 1.2),
@@ -931,12 +944,15 @@ class _ResultCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(
-                        color: color,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 body,
               ],
@@ -951,22 +967,31 @@ class _ResultCard extends StatelessWidget {
     switch (parsed.intent) {
       case VoiceIntent.schedule:
         final fmt = DateFormat('EEE, d MMM · HH:mm');
-        final dur =
-            parsed.scheduleEnd!.difference(parsed.scheduleStart!).inMinutes;
+        final dur = parsed.scheduleEnd!
+            .difference(parsed.scheduleStart!)
+            .inMinutes;
         return (
           Icons.calendar_today_rounded,
           'SCHEDULE',
           AppTheme.accentPrimary,
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(parsed.scheduleTitle!,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                parsed.scheduleTitle!,
                 style: TextStyle(
-                    color: c.text,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 3),
-            Text('${fmt.format(parsed.scheduleStart!)}  ·  ${dur}min',
-                style: TextStyle(color: c.muted, fontSize: 12)),
-          ]),
+                  color: c.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${fmt.format(parsed.scheduleStart!)}  ·  ${dur}min',
+                style: TextStyle(color: c.muted, fontSize: 12),
+              ),
+            ],
+          ),
         );
 
       case VoiceIntent.log:
@@ -974,9 +999,14 @@ class _ResultCard extends StatelessWidget {
           Icons.edit_note_rounded,
           'LOG NOW',
           AppTheme.accentGold,
-          Text(parsed.logActivity!,
-              style: TextStyle(
-                  color: c.text, fontSize: 15, fontWeight: FontWeight.w700)),
+          Text(
+            parsed.logActivity!,
+            style: TextStyle(
+              color: c.text,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         );
 
       case VoiceIntent.expense:
@@ -985,19 +1015,27 @@ class _ResultCard extends StatelessWidget {
           Icons.account_balance_wallet_rounded,
           'EXPENSE',
           const Color(0xFF50E3A4),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(fmt.format(parsed.expenseAmount),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                fmt.format(parsed.expenseAmount),
                 style: TextStyle(
-                    color: c.text,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800)),
-            const SizedBox(width: 8),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Text(parsed.expenseTitle!,
-                  style: TextStyle(color: c.muted, fontSize: 13)),
-            ),
-          ]),
+                  color: c.text,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  parsed.expenseTitle!,
+                  style: TextStyle(color: c.muted, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
         );
     }
   }

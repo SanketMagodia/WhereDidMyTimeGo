@@ -325,7 +325,8 @@ class FocusViewScreen extends StatelessWidget {
 
     if (ampm == 'pm' && hour < 12) hour += 12;
     if (ampm == 'am' && hour == 12) hour = 0;
-    if (hour < 0 || hour > 23) return _fallbackParseTaskFromPrompt(userPrompt, now);
+    if (hour < 0 || hour > 23)
+      return _fallbackParseTaskFromPrompt(userPrompt, now);
 
     final resolvedDay = _resolveRelativeDay(now, userPrompt, day);
     final resolvedTime = _resolveTimeFromPrompt(userPrompt, hour, minute);
@@ -354,10 +355,20 @@ class FocusViewScreen extends StatelessWidget {
   _AiTaskDraft _fallbackParseTaskFromPrompt(String userPrompt, DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     final day = _resolveRelativeDay(now, userPrompt, today);
-    final defaultTime = _resolveTimeFromPrompt(userPrompt, now.hour, now.minute);
+    final defaultTime = _resolveTimeFromPrompt(
+      userPrompt,
+      now.hour,
+      now.minute,
+    );
     final duration = _parseDurationFromPrompt(userPrompt);
 
-    final start = DateTime(day.year, day.month, day.day, defaultTime.$1, defaultTime.$2);
+    final start = DateTime(
+      day.year,
+      day.month,
+      day.day,
+      defaultTime.$1,
+      defaultTime.$2,
+    );
     return _AiTaskDraft(
       title: _deriveTitleFromPrompt(userPrompt),
       start: start,
@@ -435,8 +446,9 @@ class FocusViewScreen extends StatelessWidget {
 
   int _parseDurationFromPrompt(String prompt) {
     final p = prompt.toLowerCase();
-    final m = RegExp(r'(\d{1,3})\s*(min|mins|minute|minutes|hr|hrs|hour|hours)\b')
-        .firstMatch(p);
+    final m = RegExp(
+      r'(\d{1,3})\s*(min|mins|minute|minutes|hr|hrs|hour|hours)\b',
+    ).firstMatch(p);
     if (m == null) return 30;
     final raw = int.tryParse(m.group(1) ?? '') ?? 30;
     final unit = m.group(2) ?? 'min';
@@ -446,9 +458,27 @@ class FocusViewScreen extends StatelessWidget {
 
   String _deriveTitleFromPrompt(String prompt) {
     final clean = prompt
-        .replaceAll(RegExp(r'\b(today|tomorrow|tonight|morning|afternoon|evening|night)\b', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\bat\b\s*\d{1,2}(:\d{2})?\s*(am|pm)?\b', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\b\d{1,3}\s*(min|mins|minute|minutes|hr|hrs|hour|hours)\b', caseSensitive: false), '')
+        .replaceAll(
+          RegExp(
+            r'\b(today|tomorrow|tonight|morning|afternoon|evening|night)\b',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'\bat\b\s*\d{1,2}(:\d{2})?\s*(am|pm)?\b',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(
+          RegExp(
+            r'\b\d{1,3}\s*(min|mins|minute|minutes|hr|hrs|hour|hours)\b',
+            caseSensitive: false,
+          ),
+          '',
+        )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (clean.isEmpty) return 'Planned task';
@@ -536,13 +566,13 @@ class FocusViewScreen extends StatelessWidget {
             SliverToBoxAdapter(
               child: _NowCard(metrics: m, now: now),
             ),
-            SliverToBoxAdapter(child: _StatStrip(m: m)),
             const SliverToBoxAdapter(child: DailyChecklistHomeStrip()),
-            SliverToBoxAdapter(
-              child: _DayAtGlanceCard(m: m, now: now),
-            ),
+            SliverToBoxAdapter(child: _StatStrip(m: m)),
             SliverToBoxAdapter(
               child: _ExpenseInsightCard(expenses: expenses, now: now),
+            ),
+            SliverToBoxAdapter(
+              child: _DayAtGlanceCard(m: m, now: now),
             ),
             SliverToBoxAdapter(
               child: _AnimatedFeed(m: m, now: now),
@@ -762,11 +792,14 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    final greeting = now.hour < 12
+    final baseGreeting = now.hour < 12
         ? 'Good morning'
         : now.hour < 17
         ? 'Good afternoon'
         : 'Good evening';
+    final greeting = provider.userName.trim().isNotEmpty
+        ? '$baseGreeting, ${provider.userName}'
+        : baseGreeting;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 16, 10),
       child: Row(
@@ -1077,35 +1110,51 @@ class _StatStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // ── Journal card — quirky shape to invite tapping ──────────
+          _JournalPoke(date: DateTime.now()),
+          const SizedBox(width: 10),
+          // ── Remaining stats in a compact card ─────────────────────
           Expanded(
-            child: _JournalChip(
-              date: DateTime.now(),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _Chip(
-              icon: Icons.check_circle_outline_rounded,
-              label: 'Completed',
-              value: '${m.tasksDone}/${m.tasksTotal}',
-              sub: m.tasksTotal == 0
-                  ? '—'
-                  : '${(m.taskDoneRatio * 100).round()}% done',
-              color: AppTheme.accentGold,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _Chip(
-              icon: Icons.insights_rounded,
-              label: 'Captured',
-              value: _fmtMinutes(m.loggedMin),
-              sub: '${(m.logCoverage * 100).round()}% of elapsed',
-              color: AppTheme.accentSecondary,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: c.sep),
+              ),
+              child: IntrinsicHeight(
+                child: Row(
+                  children: [
+                    _InlineStat(
+                      icon: Icons.check_circle_outline_rounded,
+                      color: AppTheme.accentGold,
+                      value: '${m.tasksDone}/${m.tasksTotal}',
+                      label: m.tasksTotal == 0
+                          ? 'Tasks'
+                          : '${(m.taskDoneRatio * 100).round()}% done',
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: c.sep,
+                      indent: 4,
+                      endIndent: 4,
+                    ),
+                    _InlineStat(
+                      icon: Icons.insights_rounded,
+                      color: AppTheme.accentSecondary,
+                      value: _fmtMinutes(m.loggedMin),
+                      label: '${(m.logCoverage * 100).round()}% logged',
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -1114,49 +1163,116 @@ class _StatStrip extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
+// ── Journal "poke" card — tilted, gradient, inviting ─────────────────────────
+class _JournalPoke extends StatelessWidget {
+  final DateTime date;
+  const _JournalPoke({required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: -0.035, // ~2° tilt to make it playful
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => JournalDiaryScreen(initialDate: date),
+            ),
+          ),
+          child: Container(
+            width: 88,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2E6A50), Color(0xFF3E8B67)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2E6A50).withAlpha(90),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Big book icon
+                const Icon(
+                  Icons.menu_book_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Journal',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  DateFormat('d MMM').format(date),
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(180),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineStat extends StatelessWidget {
   final IconData icon;
-  final String label, value, sub;
   final Color color;
-  const _Chip({
+  final String value, label;
+  const _InlineStat({
     required this.icon,
-    required this.label,
-    required this.value,
-    required this.sub,
     required this.color,
+    required this.value,
+    required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.sep),
-      ),
+    return Expanded(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 14),
+              const SizedBox(width: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 1),
+          const SizedBox(height: 2),
           Text(
             label,
-            style: TextStyle(color: c.text, fontSize: 9.5),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            sub,
-            style: TextStyle(color: c.muted, fontSize: 8.5),
+            style: TextStyle(color: c.muted, fontSize: 9),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1165,71 +1281,7 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _JournalChip extends StatelessWidget {
-  final DateTime date;
-  const _JournalChip({required this.date});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => JournalDiaryScreen(initialDate: date),
-          ),
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF2E6A50), Color(0xFF3E8B67)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF78B392).withAlpha(180)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF2E6A50).withAlpha(70),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              const Icon(Icons.menu_book_rounded, color: Colors.white, size: 18),
-              const SizedBox(height: 5),
-              Text(
-                DateFormat('d MMM').format(date),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 1),
-              const Text(
-                'Journal',
-                style: TextStyle(color: Colors.white, fontSize: 9.5),
-                textAlign: TextAlign.center,
-              ),
-              Text(
-                'Tap to write',
-                style: TextStyle(color: Colors.white.withAlpha(220), fontSize: 8.5),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Day at a glance: concrete times + bars (no abstract %) ────────────────
+// ── Day at a glance: compact analytics ────────────────────────────────────
 class _DayAtGlanceCard extends StatelessWidget {
   final _Metrics m;
   final DateTime now;
@@ -1244,246 +1296,92 @@ class _DayAtGlanceCard extends StatelessWidget {
     return '${mm}m';
   }
 
-  static String _fmtHm(DateTime t) => DateFormat('h:mm a').format(t);
-
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final dayStart = DateTime(now.year, now.month, now.day, 6);
     final elapsed = m.elapsedMin;
     final logged = m.loggedMin;
-    final gapMin = math.max(0, elapsed - logged);
     final totalBlocks = m.tasksTotal;
     final doneBlocks = m.tasksDone;
     final logRatio = elapsed <= 0 ? 0.0 : (logged / elapsed).clamp(0.0, 1.0);
-    final schedRatio =
-        totalBlocks <= 0 ? 0.0 : (doneBlocks / totalBlocks).clamp(0.0, 1.0);
-
-    late final String hint;
-    if (now.isBefore(dayStart)) {
-      hint =
-          'Numbers below use a day window starting at ${_fmtHm(dayStart)} — full bars appear after that.';
-    } else if (m.todayLogs.isEmpty && totalBlocks > 0) {
-      hint =
-          'You have blocks on the schedule but no time checks yet. Answer the next “what are you doing?” prompt to log real time.';
-    } else if (m.todayLogs.isEmpty && totalBlocks == 0) {
-      hint =
-          'Add a schedule block or wait for a time-check prompt to start building today’s picture.';
-    } else if (gapMin > m.inferredIntervalMinutes * 2) {
-      hint =
-          'Some of the day since 6:00 isn’t covered by time checks yet — keep replying when notified.';
-    } else {
-      hint = 'Time checks are covering your day at a steady pace.';
-    }
+    final schedRatio = totalBlocks <= 0
+        ? 0.0
+        : (doneBlocks / totalBlocks).clamp(0.0, 1.0);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Container(
         decoration: BoxDecoration(
           color: c.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: c.sep),
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Title row
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: c.primary.withAlpha(28),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    Icons.light_mode_rounded,
-                    color: c.primary,
-                    size: 22,
+                Icon(Icons.light_mode_rounded, color: c.primary, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'Day at a glance',
+                  style: TextStyle(
+                    color: c.text,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Day at a glance',
-                        style: TextStyle(
-                          color: c.text,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        now.isBefore(dayStart)
-                            ? 'Before ${_fmtHm(dayStart)} — clock starts at 6:00'
-                            : '${_fmtDuration(elapsed)} into the day since 6:00',
-                        style: TextStyle(
-                          color: c.muted,
-                          fontSize: 12,
-                          height: 1.25,
-                        ),
-                      ),
-                    ],
-                  ),
+                const Spacer(),
+                Text(
+                  now.isBefore(dayStart)
+                      ? 'Before 6:00'
+                      : '${_fmtDuration(elapsed)} elapsed',
+                  style: TextStyle(color: c.muted, fontSize: 10),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _GlanceStatTile(
-                    icon: Icons.edit_note_rounded,
-                    iconColor: AppTheme.accentGold,
-                    label: 'Time checks',
-                    value: _fmtDuration(logged),
-                    caption: now.isBefore(dayStart)
-                        ? '—'
-                        : (logged > 0
-                            ? 'estimated from prompts'
-                            : 'none logged yet'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _GlanceStatTile(
-                    icon: Icons.calendar_view_day_rounded,
-                    iconColor: c.primary,
-                    label: 'Schedule',
-                    value: totalBlocks == 0 ? '—' : '$doneBlocks / $totalBlocks',
-                    caption: totalBlocks == 0
-                        ? 'nothing planned today'
-                        : 'blocks finished',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'Logging vs time since 6:00',
-              style: TextStyle(
-                color: c.muted,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                height: 10,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ColoredBox(color: c.surfaceMid),
-                    if (elapsed > 0)
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: logRatio,
-                        child: ColoredBox(color: AppTheme.accentGold),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              now.isBefore(dayStart)
-                  ? 'Bars unlock after 6:00.'
-                  : '${_fmtDuration(logged)} from logs · ${_fmtDuration(elapsed)} elapsed window',
-              style: TextStyle(color: c.muted, fontSize: 11, height: 1.3),
-            ),
-            if (totalBlocks > 0) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Schedule completion',
-                style: TextStyle(
-                  color: c.muted,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                ),
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: SizedBox(
-                  height: 10,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(color: c.surfaceMid),
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: schedRatio,
-                        child: ColoredBox(color: c.primary),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '$doneBlocks of $totalBlocks blocks already ended before now',
-                style: TextStyle(color: c.muted, fontSize: 11, height: 1.3),
-              ),
-            ],
             const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: c.surfaceMid.withAlpha(100),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: c.sep.withAlpha(140)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.tips_and_updates_rounded,
-                    size: 18,
-                    color: c.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      hint,
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 12,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            // Compact progress bars
+            _MiniProgress(
+              label: 'Time logged',
+              value: _fmtDuration(logged),
+              ratio: logRatio,
+              color: AppTheme.accentGold,
+              bgColor: c.surfaceMid,
             ),
+            const SizedBox(height: 10),
+            if (totalBlocks > 0) ...[
+              _MiniProgress(
+                label: 'Schedule',
+                value: '$doneBlocks/$totalBlocks blocks',
+                ratio: schedRatio,
+                color: c.primary,
+                bgColor: c.surfaceMid,
+              ),
+              const SizedBox(height: 10),
+            ],
+            // Top activity inline
             if (m.topActivity != null) ...[
-              const SizedBox(height: 12),
               Row(
                 children: [
                   Icon(
                     Icons.trending_up_rounded,
                     color: AppTheme.accentSecondary,
-                    size: 16,
+                    size: 13,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Expanded(
                     child: Text(
-                      'Most frequent in today’s logs: ${m.topActivity}',
+                      'Top: ${m.topActivity}',
                       style: TextStyle(
                         color: AppTheme.accentSecondary,
-                        fontSize: 11.5,
+                        fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        height: 1.25,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -1497,68 +1395,64 @@ class _DayAtGlanceCard extends StatelessWidget {
   }
 }
 
-class _GlanceStatTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final String value;
-  final String caption;
-
-  const _GlanceStatTile({
-    required this.icon,
-    required this.iconColor,
+class _MiniProgress extends StatelessWidget {
+  final String label, value;
+  final double ratio;
+  final Color color, bgColor;
+  const _MiniProgress({
     required this.label,
     required this.value,
-    required this.caption,
+    required this.ratio,
+    required this.color,
+    required this.bgColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: c.surfaceMid.withAlpha(80),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: c.sep.withAlpha(120)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: iconColor),
-          const SizedBox(height: 8),
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              color: c.muted,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: c.muted,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 6,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: bgColor),
+                FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: ratio,
+                  child: ColoredBox(color: color),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: c.text,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            caption,
-            style: TextStyle(
-              color: c.muted,
-              fontSize: 10,
-              height: 1.25,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -2221,8 +2115,7 @@ const _expCatIcons = {
 };
 
 Color _expColor(String cat) => _expCatColors[cat] ?? const Color(0xFFAFAFCF);
-IconData _expIcon(String cat) =>
-    _expCatIcons[cat] ?? Icons.category_rounded;
+IconData _expIcon(String cat) => _expCatIcons[cat] ?? Icons.category_rounded;
 
 class _ExpenseInsightCard extends StatelessWidget {
   final List<ExpenseModel> expenses;
@@ -2277,7 +2170,10 @@ class _ExpenseInsightCard extends StatelessWidget {
     String? topCat;
     double topAmt = 0;
     activeCats.forEach((k, v) {
-      if (v > topAmt) { topAmt = v; topCat = k; }
+      if (v > topAmt) {
+        topAmt = v;
+        topCat = k;
+      }
     });
 
     final spark = List.generate(7, (i) {
@@ -2336,8 +2232,9 @@ class _ExpenseInsightCard extends StatelessWidget {
                       delta > 0
                           ? Icons.arrow_upward_rounded
                           : Icons.arrow_downward_rounded,
-                      color:
-                          delta > 0 ? Colors.redAccent : AppTheme.accentGreen,
+                      color: delta > 0
+                          ? Colors.redAccent
+                          : AppTheme.accentGreen,
                       size: 13,
                     ),
                     const SizedBox(width: 3),
@@ -2430,7 +2327,9 @@ class _ExpenseInsightCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Text(
-                  todayCats.isNotEmpty ? 'TODAY\'S BREAKDOWN' : 'MONTH BREAKDOWN',
+                  todayCats.isNotEmpty
+                      ? 'TODAY\'S BREAKDOWN'
+                      : 'MONTH BREAKDOWN',
                   style: TextStyle(
                     color: c.muted,
                     fontSize: 9,
@@ -2450,42 +2349,46 @@ class _ExpenseInsightCard extends StatelessWidget {
                 child: Wrap(
                   spacing: 8,
                   runSpacing: 6,
-                  children: (activeCats.entries.toList()
-                        ..sort((a, b) => b.value.compareTo(a.value)))
-                      .map((e) {
-                    final col = _expColor(e.key);
-                    final total = activeCats.values
-                        .fold<double>(0, (s, v) => s + v);
-                    final pct = total == 0
-                        ? 0
-                        : (e.value / total * 100).round();
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: col.withAlpha(22),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: col.withAlpha(60)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(_expIcon(e.key), color: col, size: 11),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${e.key}  $pct%',
-                            style: TextStyle(
-                              color: col,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
+                  children:
+                      (activeCats.entries.toList()
+                            ..sort((a, b) => b.value.compareTo(a.value)))
+                          .map((e) {
+                            final col = _expColor(e.key);
+                            final total = activeCats.values.fold<double>(
+                              0,
+                              (s, v) => s + v,
+                            );
+                            final pct = total == 0
+                                ? 0
+                                : (e.value / total * 100).round();
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: col.withAlpha(22),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: col.withAlpha(60)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(_expIcon(e.key), color: col, size: 11),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${e.key}  $pct%',
+                                    style: TextStyle(
+                                      color: col,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          })
+                          .toList(),
                 ),
               ),
             ] else
@@ -2591,8 +2494,8 @@ class _ExpSparkline extends StatelessWidget {
                   color: isToday
                       ? AppTheme.accentGold
                       : (values[i] > 0
-                          ? c.primary.withAlpha(140)
-                          : c.surfaceMid),
+                            ? c.primary.withAlpha(140)
+                            : c.surfaceMid),
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(3),
                   ),

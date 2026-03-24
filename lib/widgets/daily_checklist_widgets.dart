@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../theme/app_theme.dart';
 
-/// Horizontal strip on Home — tick today’s recurring checklist items.
+/// Compact checklist strip on Home — minimal checkmark-style items.
 class DailyChecklistHomeStrip extends StatelessWidget {
   const DailyChecklistHomeStrip({super.key});
 
@@ -18,104 +18,122 @@ class DailyChecklistHomeStrip extends StatelessWidget {
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: c.surfaceMid.withAlpha(90),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: c.sep),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.checklist_rounded, color: c.muted, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Add daily checklists in the Checklists tab — they appear here each day.',
-                  style: TextStyle(color: c.muted, fontSize: 12, height: 1.25),
-                ),
-              ),
-            ],
-          ),
+        child: Row(
+          children: [
+            Icon(Icons.playlist_add_check_rounded, color: c.muted, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              'Add daily habits in Checklists tab',
+              style: TextStyle(color: c.muted, fontSize: 11),
+            ),
+          ],
         ),
       );
     }
 
+    final prog = provider.dailyChecklistProgress(d);
+    final allDone = prog.checked == prog.total && prog.total > 0;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: Row(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: allDone
+              ? c.secondary.withAlpha(12)
+              : c.surfaceMid.withAlpha(60),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: allDone ? c.secondary.withAlpha(60) : c.sep.withAlpha(80),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Row(
               children: [
-                Icon(Icons.checklist_rounded, color: c.primary, size: 16),
-                const SizedBox(width: 6),
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: allDone
+                        ? c.secondary.withAlpha(30)
+                        : c.primary.withAlpha(20),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    allDone
+                        ? Icons.done_all_rounded
+                        : Icons.playlist_add_check_rounded,
+                    color: allDone ? c.secondary : c.primary,
+                    size: 13,
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Text(
-                  'TODAY’S CHECKLIST',
+                  'Daily habits',
                   style: TextStyle(
-                    color: c.muted,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
+                    color: c.text,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  _progressLabel(provider, d),
-                  style: TextStyle(
-                    color: c.muted,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: allDone
+                        ? c.secondary.withAlpha(25)
+                        : c.muted.withAlpha(18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${prog.checked}/${prog.total}',
+                    style: TextStyle(
+                      color: allDone ? c.secondary : c.muted,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          SizedBox(
-            height: 88,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: items.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final checked =
-                    provider.isDailyChecklistItemChecked(item.id, d);
-                return _HomeCheckChip(
+            const SizedBox(height: 10),
+            // Compact checklist items
+            Wrap(
+              spacing: 0,
+              runSpacing: 2,
+              children: items.map((item) {
+                final checked = provider.isDailyChecklistItemChecked(
+                  item.id,
+                  d,
+                );
+                return _CompactCheckItem(
                   title: item.title,
                   checked: checked,
-                  accent: c.primary,
-                  onTap: () =>
-                      provider.toggleDailyChecklistItem(item.id, d),
+                  onTap: () => provider.toggleDailyChecklistItem(item.id, d),
                 );
-              },
+              }).toList(),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-
-  String _progressLabel(AppProvider p, DateTime d) {
-    final r = p.dailyChecklistProgress(d);
-    return '${r.checked}/${r.total}';
-  }
 }
 
-class _HomeCheckChip extends StatelessWidget {
+class _CompactCheckItem extends StatelessWidget {
   final String title;
   final bool checked;
-  final Color accent;
   final VoidCallback onTap;
 
-  const _HomeCheckChip({
+  const _CompactCheckItem({
     required this.title,
     required this.checked,
-    required this.accent,
     required this.onTap,
   });
 
@@ -126,51 +144,52 @@ class _HomeCheckChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 132,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: checked
-                ? accent.withAlpha(35)
-                : c.surfaceMid.withAlpha(120),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: checked ? accent.withAlpha(180) : c.sep,
-              width: checked ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    checked
-                        ? Icons.check_circle_rounded
-                        : Icons.circle_outlined,
-                    color: checked ? accent : c.muted,
-                    size: 20,
-                  ),
-                  const Spacer(),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: checked ? c.text : c.muted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.2,
-                    decoration:
-                        checked ? TextDecoration.lineThrough : null,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: checked ? c.secondary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(
+                    color: checked ? c.secondary : c.muted.withAlpha(100),
+                    width: 1.5,
                   ),
                 ),
+                child: checked
+                    ? const Icon(
+                        Icons.check_rounded,
+                        color: Colors.white,
+                        size: 12,
+                      )
+                    : null,
               ),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.6,
+                ),
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: checked ? c.muted : c.text,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    decoration: checked ? TextDecoration.lineThrough : null,
+                    decorationColor: c.muted,
+                    height: 1.2,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 12),
             ],
           ),
         ),
@@ -190,11 +209,7 @@ class ScheduleDailyChecklistFooter extends StatelessWidget {
     final provider = Provider.of<AppProvider>(context);
     final items = provider.dailyChecklistItems;
     final c = AppColors.of(context);
-    final d = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
-    );
+    final d = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
     final prog = provider.dailyChecklistProgress(d);
 
     if (items.isEmpty) return const SizedBox.shrink();

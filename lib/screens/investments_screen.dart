@@ -58,9 +58,10 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
   }
 
   void _showAddOptions(BuildContext context) {
+    final c = AppColors.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.of(context).surfaceMid,
+      backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -73,19 +74,19 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
             Text(
               'Add Investment',
               style: TextStyle(
-                color: AppColors.of(context).text,
+                color: c.text,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
+            FilledButton.icon(
               icon: const Icon(Icons.show_chart_rounded),
               label: const Text('Add Mutual Fund SIP'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4CAF50).withAlpha(50),
-                foregroundColor: const Color(0xFF4CAF50),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.all(16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -97,12 +98,12 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
               },
             ),
             const SizedBox(height: 12),
-            ElevatedButton.icon(
+            FilledButton.icon(
               icon: const Icon(Icons.candlestick_chart_rounded),
               label: const Text('Add Stock (One Time Buy)'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.of(context).blue.withAlpha(50),
-                foregroundColor: AppColors.of(context).blue,
+              style: FilledButton.styleFrom(
+                backgroundColor: c.blue,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.all(16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
