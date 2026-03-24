@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/calendar_sync_service.dart';
@@ -28,6 +29,8 @@ class SettingsScreen extends StatelessWidget {
 /// Settings content without a Scaffold — safe to embed inside a Drawer.
 class SettingsBody extends StatelessWidget {
   const SettingsBody({super.key});
+  static const _gemmaDownloadUrl =
+      'https://drive.google.com/file/d/1LwPtoiEs0NxaIoRfv9xBVzKncfS2fmQK/view?usp=sharing';
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +139,47 @@ class SettingsBody extends StatelessWidget {
                         ? 'AI Model loaded successfully!'
                         : 'Model import failed or cancelled.',
                     style: TextStyle(color: c.text),
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        _DataTile(
+          icon: Icons.download_for_offline_rounded,
+          title: 'Download Gemma 3 1B Model',
+          sub: 'Open/copy Google Drive link for gemma3-1B-it-int4.task',
+          c: c,
+          onTap: () async {
+            await Clipboard.setData(
+              const ClipboardData(text: _gemmaDownloadUrl),
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: c.surface,
+                  content: Text(
+                    'Model link copied to clipboard.',
+                    style: TextStyle(color: c.text),
+                  ),
+                  action: SnackBarAction(
+                    label: 'VIEW',
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Gemma 3 1B Download URL'),
+                          content: SelectableText(_gemmaDownloadUrl),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Close'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
               );
@@ -360,34 +404,34 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
         return;
       }
 
-      // Let user pick which calendar
-      final calendars =
-          await CalendarSyncService.instance.getWritableCalendars();
-      if (calendars.isEmpty) {
+      // Any calendar we can read (import); writable ones can also mirror app → calendar.
+      final calendars = await CalendarSyncService.instance.getAllCalendars();
+      final usable = calendars.where((c) => c.id != null && c.id!.isNotEmpty).toList();
+      if (usable.isEmpty) {
         setState(() => _loading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No writable calendars found on this device.'),
+              content: Text('No calendars found on this device.'),
             ),
           );
         }
         return;
       }
 
-      String? chosenId;
       if (!mounted) return;
-      chosenId = await showDialog<String>(
+      final chosen = await showDialog<Calendar>(
         context: context,
         builder: (ctx) => SimpleDialog(
           backgroundColor: widget.c.surface,
           title: Text(
-            'Choose calendar',
+            'Which calendar?',
             style: TextStyle(color: widget.c.text, fontSize: 15),
           ),
-          children: calendars.map((cal) {
+          children: usable.map((cal) {
+            final ro = cal.isReadOnly == true;
             return SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, cal.id),
+              onPressed: () => Navigator.pop(ctx, cal),
               child: Row(
                 children: [
                   Container(
@@ -402,9 +446,22 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      cal.name ?? 'Unknown',
-                      style: TextStyle(color: widget.c.text, fontSize: 13),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          cal.name ?? 'Unknown',
+                          style: TextStyle(color: widget.c.text, fontSize: 13),
+                        ),
+                        if (ro)
+                          Text(
+                            'Read-only — import only',
+                            style: TextStyle(
+                              color: widget.c.muted,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -414,24 +471,36 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
         ),
       );
 
-      if (chosenId == null) {
+      if (chosen == null || chosen.id == null) {
         setState(() => _loading = false);
         return;
       }
 
-      final ok =
-          await widget.provider.setCalendarSync(true, calendarId: chosenId);
+      final imported = await widget.provider.setCalendarSync(
+        true,
+        calendarId: chosen.id,
+        calendarReadOnly: chosen.isReadOnly == true,
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              ok
-                  ? 'Calendar sync enabled — all tasks synced!'
-                  : 'Could not enable calendar sync.',
+        if (imported < 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not enable calendar link (permission denied).'),
+              backgroundColor: Colors.redAccent,
             ),
-            backgroundColor: ok ? const Color(0xFF1D6F42) : Colors.redAccent,
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                imported == 0
+                    ? 'Calendar linked — no new events to import (pull to refresh anytime).'
+                    : 'Calendar linked — imported $imported event${imported == 1 ? '' : 's'} into Schedule.',
+              ),
+              backgroundColor: const Color(0xFF1D6F42),
+            ),
+          );
+        }
       }
     } else {
       await widget.provider.setCalendarSync(false);
@@ -457,50 +526,99 @@ class _CalendarSyncTileState extends State<_CalendarSyncTile> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: c.sep),
       ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: (enabled ? Colors.green : c.primary).withAlpha(25),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.calendar_month_rounded,
-            color: enabled ? Colors.green : c.primary,
-            size: 18,
-          ),
-        ),
-        title: Text(
-          'Sync with Phone Calendar',
-          style: TextStyle(
-            color: c.text,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: Text(
-          enabled && calId != null
-              ? 'Syncing tasks to your calendar'
-              : 'Schedules appear in your native calendar app',
-          style: TextStyle(color: c.muted, fontSize: 11),
-        ),
-        trailing: _loading
-            ? SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: c.primary,
-                ),
-              )
-            : Switch(
-                value: enabled,
-                onChanged: _toggle,
-                activeThumbColor: Colors.green,
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: (enabled ? Colors.green : c.primary).withAlpha(25),
+                shape: BoxShape.circle,
               ),
+              child: Icon(
+                Icons.calendar_month_rounded,
+                color: enabled ? Colors.green : c.primary,
+                size: 18,
+              ),
+            ),
+            title: Text(
+              'Calendar & Schedule',
+              style: TextStyle(
+                color: c.text,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              enabled && calId != null
+                  ? (widget.provider.calendarReadOnly
+                      ? 'Phone events import into Schedule (read-only calendar)'
+                      : 'Events import here; new/edited blocks also appear in your calendar')
+                  : 'Import calendar events into Schedule; writable calendars stay two-way',
+              style: TextStyle(color: c.muted, fontSize: 11),
+            ),
+            trailing: _loading
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: c.primary,
+                    ),
+                  )
+                : Switch(
+                    value: enabled,
+                    onChanged: _toggle,
+                    activeThumbColor: Colors.green,
+                  ),
+          ),
+          if (enabled && calId != null) ...[
+            if (widget.provider.calendarReadOnly)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: Text(
+                  'This calendar is read-only — events still import into Schedule.',
+                  style: TextStyle(color: c.muted, fontSize: 11),
+                ),
+              ),
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _loading
+                          ? null
+                          : () async {
+                              setState(() => _loading = true);
+                              final count = await widget.provider
+                                  .importTasksFromPhoneCalendar();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      count == 0
+                                          ? 'No new events found to import.'
+                                          : 'Imported $count event${count == 1 ? '' : 's'} into Schedule.',
+                                    ),
+                                  ),
+                                );
+                              }
+                              if (mounted) setState(() => _loading = false);
+                            },
+                      icon: const Icon(Icons.sync_alt_rounded, size: 16),
+                      label: const Text('Import again from calendar'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

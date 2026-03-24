@@ -26,20 +26,59 @@
             android:divider="@android:color/transparent"
             android:dividerHeight="6dp" />
 
-        <!-- "+ Expense" button at the foot of the sticky note -->
-        <TextView
-            android:id="@+id/btn_add_expense"
+        <!-- Action row: Expense / Schedule / Checklists -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="28dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:background="@drawable/widget_add_btn_bg"
-            android:gravity="center"
-            android:text="＋ Expense"
-            android:textColor="#5C3D02"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"/>
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_add_expense"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/widget_add_btn_bg"
+                android:gravity="center"
+                android:text="Expense"
+                android:textColor="#5C3D02"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"/>
+
+            <TextView
+                android:id="@+id/btn_open_schedule"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:layout_weight="1"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:background="@drawable/widget_add_btn_bg"
+                android:gravity="center"
+                android:text="Schedule"
+                android:textColor="#5C3D02"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"/>
+
+            <TextView
+                android:id="@+id/btn_open_notes"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/widget_add_btn_bg"
+                android:gravity="center"
+                android:text="Checklists"
+                android:textColor="#5C3D02"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"/>
+        </LinearLayout>
 
     </LinearLayout>
 

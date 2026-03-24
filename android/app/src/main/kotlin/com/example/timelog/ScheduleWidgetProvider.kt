@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
+import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
 import es.antonborri.home_widget.HomeWidgetPlugin
 import org.json.JSONArray
@@ -61,8 +62,10 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
             views.setRemoteAdapter(R.id.schedule_list, serviceIntent)
 
             // Item tap → open app on the schedule/tasks screen
+            // Must use home_widget LAUNCH action so Flutter sees the URI via
+            // initiallyLaunchedFromHomeWidget / widgetClicked (not ACTION_VIEW).
             val openScheduleIntent = Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
+                action = HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION
                 data = Uri.parse("wdmtg://schedule")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -71,9 +74,9 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             views.setPendingIntentTemplate(R.id.schedule_list, schedulePendingIntent)
 
-            // ── Expense "+" button ────────────────────────────────────────────
+            // ── Action buttons: Expense / Schedule / Notes ───────────────────
             val openExpenseIntent = Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
+                action = HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION
                 data = Uri.parse("wdmtg://expenses")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -81,6 +84,26 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                 context, 200, openExpenseIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             views.setOnClickPendingIntent(R.id.btn_add_expense, expensePendingIntent)
+
+            val openScheduleTabIntent = Intent(context, MainActivity::class.java).apply {
+                action = HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION
+                data = Uri.parse("wdmtg://schedule")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val scheduleTabPendingIntent = PendingIntent.getActivity(
+                context, 201, openScheduleTabIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_open_schedule, scheduleTabPendingIntent)
+
+            val openNotesIntent = Intent(context, MainActivity::class.java).apply {
+                action = HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION
+                data = Uri.parse("wdmtg://todos")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val notesPendingIntent = PendingIntent.getActivity(
+                context, 202, openNotesIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_open_notes, notesPendingIntent)
 
             // ── Day-selector tiles ────────────────────────────────────────────
             val tilesJsonStr = widgetData.getString("schedule_tiles_json", null)

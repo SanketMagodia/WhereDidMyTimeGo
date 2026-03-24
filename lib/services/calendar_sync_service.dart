@@ -18,7 +18,7 @@ class CalendarSyncService {
 
   String? _calendarId;
   String? get calendarId => _calendarId;
-  void setCalendarId(String id) => _calendarId = id;
+  void setCalendarId(String? id) => _calendarId = id;
 
   Future<bool> hasPermission() async {
     final permissionsGranted = await _plugin.hasPermissions();
@@ -38,6 +38,25 @@ class CalendarSyncService {
 
     return res.data!
         .where((c) => c.isReadOnly == false)
+        .map(
+          (c) => Calendar(
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            isReadOnly: c.isReadOnly,
+          ),
+        )
+        .toList();
+  }
+
+  /// All calendars the user can read (for importing events into the app).
+  Future<List<Calendar>> getAllCalendars() async {
+    if (!(await hasPermission())) return [];
+
+    final res = await _plugin.retrieveCalendars();
+    if (!res.isSuccess || res.data == null) return [];
+
+    return res.data!
         .map(
           (c) => Calendar(
             id: c.id,
@@ -93,5 +112,38 @@ class CalendarSyncService {
       }
     }
     return newIds;
+  }
+
+  /// Reverse sync: import events from selected phone calendar into app tasks.
+  Future<List<TaskModel>> importEventsAsTasks({
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    if (_calendarId == null || !(await hasPermission())) return [];
+
+    final start = from ?? DateTime.now().subtract(const Duration(days: 120));
+    final end = to ?? DateTime.now().add(const Duration(days: 365));
+    final params = dc.RetrieveEventsParams(startDate: start, endDate: end);
+    final res = await _plugin.retrieveEvents(_calendarId, params);
+    if (!res.isSuccess || res.data == null) return [];
+
+    return res.data!
+        .where((e) => e.start != null)
+        .map((e) {
+          final s = e.start!;
+          final eEnd = e.end ?? s.add(const Duration(minutes: 30));
+          final evId = e.eventId ?? '${s.millisecondsSinceEpoch}_${e.title ?? 'event'}';
+          return TaskModel(
+            id: 'cal_$evId',
+            title: (e.title == null || e.title!.trim().isEmpty)
+                ? 'Calendar Event'
+                : e.title!.trim(),
+            description: e.description,
+            startTime: s,
+            endTime: eEnd,
+            calendarEventId: e.eventId,
+          );
+        })
+        .toList(growable: false);
   }
 }

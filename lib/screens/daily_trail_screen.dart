@@ -7,7 +7,9 @@ import '../models/task_model.dart';
 import '../models/log_entry_model.dart';
 import '../theme/app_theme.dart';
 import 'add_task_dialog.dart';
+import 'journal_diary_screen.dart';
 import 'package:table_calendar/table_calendar.dart';
+import '../widgets/daily_checklist_widgets.dart';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const double _px = 2.0; // pixels per minute → 30 min = 60px, 1 hr = 120px
@@ -197,16 +199,19 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
             onDaySelected: (sel, _) => setState(() => _currentDate = sel),
             onFormatChanged: (f) => setState(() => _calendarFormat = f),
             calendarBuilders: CalendarBuilders(
-              headerTitleBuilder: (ctx, day) => Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Text(
-                  DateFormat('MMMM yyyy').format(day),
-                  style: TextStyle(
-                    color: c.text,
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+              headerTitleBuilder: (ctx, day) => Row(
+                children: [
+                  Text(
+                    DateFormat('MMMM yyyy').format(day),
+                    style: TextStyle(
+                      color: c.text,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  _CalendarHeaderJournalButton(currentDate: _currentDate),
+                ],
               ),
             ),
           ),
@@ -500,6 +505,7 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
                           ),
                         ),
                       ),
+                      ScheduleDailyChecklistFooter(selectedDate: _currentDate),
                     ],
                   ),
                 ),
@@ -509,7 +515,8 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
             Positioned(
               bottom: 16,
               right: 16,
-              child: _ShiftButtons(
+              child: _TaskTools(
+                currentDate: _currentDate,
                 onShift: (delay) => _shiftFutureTasks(delay, provider),
               ),
             ),
@@ -554,9 +561,10 @@ class _DailyTrailScreenState extends State<DailyTrailScreen> {
 
 // ─── Shift buttons widget ─────────────────────────────────────────────────────
 // Floating bottom-right buttons; shifts tasks by a fixed 30 minutes.
-class _ShiftButtons extends StatelessWidget {
+class _TaskTools extends StatelessWidget {
+  final DateTime currentDate;
   final void Function(bool delay) onShift;
-  const _ShiftButtons({required this.onShift});
+  const _TaskTools({required this.currentDate, required this.onShift});
 
   @override
   Widget build(BuildContext context) {
@@ -648,6 +656,52 @@ class _ShiftButtons extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CalendarHeaderJournalButton extends StatelessWidget {
+  final DateTime currentDate;
+  const _CalendarHeaderJournalButton({required this.currentDate});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => JournalDiaryScreen(initialDate: currentDate),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: c.primary.withAlpha(18),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: c.primary.withAlpha(80)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.menu_book_rounded, color: c.primary, size: 12),
+              const SizedBox(width: 4),
+              Text(
+                'Write Journal',
+                style: TextStyle(
+                  color: c.primary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

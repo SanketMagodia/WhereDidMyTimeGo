@@ -61,7 +61,17 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onWidgetLink(Uri? uri) {
     if (uri == null) return;
     final idx = _deepLinkTabs[uri.host];
-    if (idx != null && mounted) _goTo(idx);
+    if (idx == null || !mounted) return;
+    void apply() {
+      if (!mounted) return;
+      _goTo(idx);
+    }
+
+    if (_pageController.hasClients) {
+      apply();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+    }
   }
 
   void _goTo(int index) {
@@ -150,7 +160,7 @@ class _NavBar extends StatelessWidget {
             ),
             _NavItem(
               icon: Icons.calendar_today_rounded,
-              label: 'Tasks',
+              label: 'Schedule',
               selected: currentIndex == 1,
               onTap: () => onTap(1),
               c: c,
@@ -158,8 +168,8 @@ class _NavBar extends StatelessWidget {
             // Centre gap for the docked FAB (FAB=56dp + 2×notchMargin=16dp)
             const SizedBox(width: 72),
             _NavItem(
-              icon: Icons.sticky_note_2_rounded,
-              label: 'Notes',
+              icon: Icons.checklist_rounded,
+              label: 'Checklists',
               selected: currentIndex == 2,
               onTap: () => onTap(2),
               c: c,

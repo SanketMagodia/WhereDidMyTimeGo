@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../models/daily_checklist_item_model.dart';
 import '../models/todo_folder_model.dart';
 import '../models/todo_model.dart';
 import '../theme/app_theme.dart';
@@ -36,7 +37,7 @@ class _TodosScreenState extends State<TodosScreen> {
       backgroundColor: c.bg,
       appBar: AppBar(
         title: Text(
-          'Notes & Todos',
+          'Checklists',
           style: TextStyle(color: c.text, fontWeight: FontWeight.bold),
         ),
         backgroundColor: c.bg,
@@ -84,22 +85,94 @@ class _TodosScreenState extends State<TodosScreen> {
           ),
         ],
       ),
-      body: folders.isEmpty
-          ? Center(
-              child: Text(
-                'No folders yet. Tap + Folder to create one!',
-                style: TextStyle(color: c.muted),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: _DailyChecklistCard(
+              provider: provider,
+              onAdd: () => _showAddDailyItemDialog(context, provider),
+            ),
+          ),
+          if (folders.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'No folders yet. Tap + Folder for note lists.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: c.muted),
+                  ),
+                ),
               ),
             )
-          : ListView.builder(
+          else
+            SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              itemCount: folders.length,
-              itemBuilder: (context, index) {
-                final folder = folders[index];
-                return _buildFolderCard(context, folder, provider, isLight);
-              },
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final folder = folders[index];
+                    return _buildFolderCard(
+                      context,
+                      folder,
+                      provider,
+                      isLight,
+                    );
+                  },
+                  childCount: folders.length,
+                ),
+              ),
             ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _showAddDailyItemDialog(
+    BuildContext context,
+    AppProvider provider,
+  ) async {
+    final c = AppColors.of(context);
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text(
+          'Daily checklist item',
+          style: TextStyle(color: c.text, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: c.text),
+          decoration: InputDecoration(
+            hintText: 'e.g. Morning walk',
+            hintStyle: TextStyle(color: c.muted),
+            filled: true,
+            fillColor: c.surfaceMid,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: c.muted)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      await provider.addDailyChecklistItem(ctrl.text);
+    }
+    ctrl.dispose();
   }
 
   Widget _buildFolderCard(
@@ -543,6 +616,146 @@ class _TodosScreenState extends State<TodosScreen> {
   }
 }
 
+class _DailyChecklistCard extends StatelessWidget {
+  final AppProvider provider;
+  final VoidCallback onAdd;
+
+  const _DailyChecklistCard({
+    required this.provider,
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = provider.dailyChecklistItems;
+    final c = AppColors.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.sep),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.today_rounded, color: c.primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Daily checklist',
+                    style: TextStyle(
+                      color: c.text,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onAdd,
+                  icon: Icon(Icons.add_circle_outline_rounded, color: c.primary),
+                  tooltip: 'Add item',
+                ),
+              ],
+            ),
+            Text(
+              'Same order every day. Drag to reorder. Checkmarks reset at midnight — history is kept per date.',
+              style: TextStyle(color: c.muted, fontSize: 11, height: 1.3),
+            ),
+            const SizedBox(height: 10),
+            if (items.isEmpty)
+              Text(
+                'Tap + to add your first daily item.',
+                style: TextStyle(color: c.muted, fontSize: 13),
+              )
+            else
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: items.length,
+                onReorder: provider.reorderDailyChecklistItems,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return ListTile(
+                    key: ValueKey(item.id),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 0),
+                    leading: ReorderableDragStartListener(
+                      index: index,
+                      child: Icon(Icons.drag_handle_rounded, color: c.muted),
+                    ),
+                    title: Text(
+                      item.title,
+                      style: TextStyle(color: c.text, fontWeight: FontWeight.w600),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.edit_outlined, size: 20, color: c.muted),
+                          onPressed: () => _editDaily(context, provider, item),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline_rounded, size: 20, color: c.muted),
+                          onPressed: () => provider.removeDailyChecklistItem(item.id),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editDaily(
+    BuildContext context,
+    AppProvider provider,
+    DailyChecklistItemModel item,
+  ) async {
+    final c = AppColors.of(context);
+    final ctrl = TextEditingController(text: item.title);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        title: Text('Edit item', style: TextStyle(color: c.text)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: c.text),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: c.surfaceMid,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: c.muted)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      await provider.updateDailyChecklistItemTitle(item.id, ctrl.text);
+    }
+    ctrl.dispose();
+  }
+}
+
 class _NoteCard extends StatelessWidget {
   final TodoModel todo;
   final Color color;
@@ -553,7 +766,6 @@ class _NoteCard extends StatelessWidget {
   final ValueChanged<bool?> onToggle;
 
   const _NoteCard({
-    super.key,
     required this.todo,
     required this.color,
     required this.isLight,

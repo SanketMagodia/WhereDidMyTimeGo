@@ -134,39 +134,149 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
       onResult: (r) {
         if (!mounted) return;
         setState(() => _transcript = r.recognizedWords);
-        if (r.finalResult && _transcript.isNotEmpty && !_processingLock) {
-          _runGemma();
-        }
       },
-      pauseFor: const Duration(seconds: 2),
+      // Keep capture open; user explicitly decides when to stop and process.
+      pauseFor: const Duration(minutes: 5),
       listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.confirmation,
+        listenMode: ListenMode.dictation,
         cancelOnError: false,
       ),
     );
   }
 
-  void _tapDone() {
+  Future<void> _tapDone() async {
     if (_phase != _Phase.listening) return;
-    _speech.stop();
+    await _speech.stop();
+    if (!mounted) return;
     if (_transcript.isNotEmpty && !_processingLock) {
       _runGemma();
+    } else {
+      setState(() {
+        _phase = _Phase.error;
+        _errorMsg = 'No speech captured yet. Speak, then tap Stop & Process.';
+      });
     }
   }
 
   // ── Gemma ───────────────────────────────────────────────────────────────────
 
+  static const _parseAttempts = 3;
+
+  String _llmResponseText(dynamic response) {
+    if (response is TextResponse) return response.token.trim();
+    return response.toString().trim();
+  }
+
+  /// Prefer outermost `{ ... }` — the old non-greedy regex often truncated JSON.
+  String? _extractJsonObject(String raw) {
+    var s = raw
+        .replaceAll(RegExp(r'```json\s*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'```\s*'), '')
+        .trim();
+    final start = s.indexOf('{');
+    final end = s.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    return s.substring(start, end + 1);
+  }
+
+  String _voicePromptForAttempt(
+    String dateStr,
+    String timeStr,
+    int attempt,
+  ) {
+    final strict = attempt > 1
+        ? '\n\nCRITICAL: Output exactly one JSON object only. '
+            'No markdown fences, no text before or after the `{`.'
+        : '';
+    return switch (widget.fixedIntent) {
+      VoiceIntent.schedule =>
+        'Extract schedule info from the voice command.\n'
+        'Today: $dateStr  Current time: $timeStr\n'
+        'Return ONLY valid JSON (single line or compact is fine): '
+        '{"title":"...","date":"YYYY-MM-DD","time":"HH:mm","duration_minutes":30}\n'
+        'Resolve relative days (today/tomorrow). Default 30 min if not mentioned.\n'
+        'Voice transcript: "$_transcript"$strict',
+
+      VoiceIntent.log =>
+        'Extract the activity name from the voice command.\n'
+        'Return ONLY valid JSON: {"activity":"..."}\n'
+        'Voice transcript: "$_transcript"$strict',
+
+      VoiceIntent.expense =>
+        'Extract expense details from the voice command.\n'
+        'Return ONLY valid JSON: {"amount":0.0,"title":"..."} — amount is a number.\n'
+        'Voice transcript: "$_transcript"$strict',
+    };
+  }
+
+  _Parsed _parsedFromJsonMap(Map<String, dynamic> d, String dateStr, DateTime now) {
+    switch (widget.fixedIntent) {
+      case VoiceIntent.schedule:
+        final title = (d['title'] ?? _transcript).toString().trim();
+        final rawDate = (d['date'] ?? dateStr).toString();
+        final rawTime = (d['time'] ?? '09:00').toString();
+        final dur = (d['duration_minutes'] is num
+                ? (d['duration_minutes'] as num).toInt()
+                : 30)
+            .clamp(5, 480);
+        final day = DateTime.tryParse(rawDate) ?? now;
+        final parts = rawTime.split(':');
+        final h = int.tryParse(parts.first) ?? 9;
+        final min = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+        final start = DateTime(day.year, day.month, day.day, h, min);
+        return _Parsed(
+          intent: VoiceIntent.schedule,
+          scheduleTitle: title,
+          scheduleStart: start,
+          scheduleEnd: start.add(Duration(minutes: dur)),
+        );
+
+      case VoiceIntent.log:
+        return _Parsed(
+          intent: VoiceIntent.log,
+          logActivity: (d['activity'] ?? _transcript).toString().trim(),
+        );
+
+      case VoiceIntent.expense:
+        return _Parsed(
+          intent: VoiceIntent.expense,
+          expenseAmount: d['amount'] is num
+              ? (d['amount'] as num).toDouble()
+              : double.tryParse('${d['amount']}') ?? 0.0,
+          expenseTitle: (d['title'] ?? _transcript).toString().trim(),
+        );
+    }
+  }
+
+  bool _voiceParsedIsUsable(_Parsed p) {
+    switch (p.intent) {
+      case VoiceIntent.schedule:
+        if (p.scheduleTitle == null || p.scheduleTitle!.isEmpty) return false;
+        if (p.scheduleStart == null || p.scheduleEnd == null) return false;
+        return !p.scheduleEnd!.isBefore(p.scheduleStart!);
+      case VoiceIntent.log:
+        return p.logActivity != null && p.logActivity!.trim().isNotEmpty;
+      case VoiceIntent.expense:
+        return p.expenseTitle != null && p.expenseTitle!.trim().isNotEmpty;
+    }
+  }
+
   Future<void> _runGemma() async {
     if (_processingLock) return;
     _processingLock = true;
     await _speech.stop();
-    if (!mounted) { _processingLock = false; return; }
+    if (!mounted) {
+      _processingLock = false;
+      return;
+    }
     setState(() => _phase = _Phase.processing);
 
-    // Capture before any await
     final provider = Provider.of<AppProvider>(context, listen: false);
     if (!provider.isAiReady) {
-      if (!mounted) { _processingLock = false; return; }
+      if (!mounted) {
+        _processingLock = false;
+        return;
+      }
       setState(() {
         _phase = _Phase.error;
         _errorMsg = 'Import an AI model in Settings first.';
@@ -179,85 +289,58 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
     final dateStr = DateFormat('yyyy-MM-dd').format(now);
     final timeStr = DateFormat('HH:mm').format(now);
 
-    // Intent-specific focused prompt — much more accurate than generic classification
-    final prompt = switch (widget.fixedIntent) {
-      VoiceIntent.schedule =>
-        'Extract schedule info from the voice command.\n'
-        'Today: $dateStr  Time: $timeStr\n'
-        'Return ONLY: {"title":"...","date":"YYYY-MM-DD","time":"HH:mm","duration_minutes":30}\n'
-        'Resolve relative days (today/tomorrow). Default 30 min if not mentioned.\n'
-        'Voice: "$_transcript"',
-
-      VoiceIntent.log =>
-        'Extract the activity name from the voice command.\n'
-        'Return ONLY: {"activity":"..."}\n'
-        'Voice: "$_transcript"',
-
-      VoiceIntent.expense =>
-        'Extract expense details from the voice command.\n'
-        'Return ONLY: {"amount":0.0,"title":"..."}\n'
-        'Voice: "$_transcript"',
-    };
-
     try {
-      final model = await FlutterGemma.getActiveModel(maxTokens: 200);
-      final chat = await model.createChat();
-      await chat.addQuery(Message(text: prompt, isUser: true));
-      final response = await chat.generateChatResponse();
-      if (!mounted) { _processingLock = false; return; }
-
-      final raw = response is TextResponse ? response.token.trim() : '';
-      var jsonStr = raw.replaceAll('```json', '').replaceAll('```', '').trim();
-      if (!jsonStr.startsWith('{')) {
-        final m = RegExp(r'\{[\s\S]*?\}').firstMatch(jsonStr);
-        jsonStr = m?.group(0) ?? '';
-      }
-      if (jsonStr.isEmpty) throw Exception('no JSON');
-
-      final d = jsonDecode(jsonStr) as Map<String, dynamic>;
-      _Parsed result;
-
-      switch (widget.fixedIntent) {
-        case VoiceIntent.schedule:
-          final title = (d['title'] ?? _transcript).toString().trim();
-          final rawDate = (d['date'] ?? dateStr).toString();
-          final rawTime = (d['time'] ?? '09:00').toString();
-          final dur = (d['duration_minutes'] is num
-              ? (d['duration_minutes'] as num).toInt() : 30).clamp(5, 480);
-          final day = DateTime.tryParse(rawDate) ?? now;
-          final parts = rawTime.split(':');
-          final h = int.tryParse(parts.first) ?? 9;
-          final min = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-          final start = DateTime(day.year, day.month, day.day, h, min);
-          result = _Parsed(
-            intent: VoiceIntent.schedule,
-            scheduleTitle: title,
-            scheduleStart: start,
-            scheduleEnd: start.add(Duration(minutes: dur)),
+      var ok = false;
+      for (var attempt = 1; attempt <= _parseAttempts; attempt++) {
+        if (!mounted) break;
+        try {
+          final prompt = _voicePromptForAttempt(dateStr, timeStr, attempt);
+          final model = await FlutterGemma.getActiveModel(
+            maxTokens: attempt == 1 ? 256 : 384,
           );
+          final chat = await model.createChat();
+          await chat.addQuery(Message(text: prompt, isUser: true));
+          final response = await chat.generateChatResponse();
+          if (!mounted) break;
 
-        case VoiceIntent.log:
-          result = _Parsed(
-            intent: VoiceIntent.log,
-            logActivity: (d['activity'] ?? _transcript).toString().trim(),
-          );
+          final raw = _llmResponseText(response);
+          if (raw.isEmpty) throw Exception('empty response');
 
-        case VoiceIntent.expense:
-          result = _Parsed(
-            intent: VoiceIntent.expense,
-            expenseAmount: d['amount'] is num
-                ? (d['amount'] as num).toDouble() : 0.0,
-            expenseTitle: (d['title'] ?? _transcript).toString().trim(),
-          );
+          final jsonStr = _extractJsonObject(raw);
+          if (jsonStr == null || jsonStr.isEmpty) {
+            throw Exception('no JSON object');
+          }
+
+          final decoded = jsonDecode(jsonStr);
+          if (decoded is! Map) {
+            throw Exception('JSON not an object');
+          }
+          final d = Map<String, dynamic>.from(decoded);
+
+          final result = _parsedFromJsonMap(d, dateStr, now);
+          if (!_voiceParsedIsUsable(result)) {
+            throw Exception('parsed fields unusable');
+          }
+
+          setState(() {
+            _parsed = result;
+            _phase = _Phase.result;
+          });
+          ok = true;
+          break;
+        } catch (_) {
+          if (attempt < _parseAttempts) {
+            await Future<void>.delayed(const Duration(milliseconds: 400));
+          }
+        }
       }
 
-      setState(() { _parsed = result; _phase = _Phase.result; });
-    } catch (_) {
-      if (!mounted) { _processingLock = false; return; }
-      setState(() {
-        _phase = _Phase.error;
-        _errorMsg = 'Could not parse. Please try again.';
-      });
+      if (!ok && mounted) {
+        setState(() {
+          _phase = _Phase.error;
+          _errorMsg = 'Could not parse. Please try again.';
+        });
+      }
     } finally {
       _processingLock = false;
     }
@@ -476,14 +559,14 @@ class _VoiceAssistantSheetState extends State<VoiceAssistantSheet>
         const SizedBox(height: 14),
         // Done button
         AnimatedOpacity(
-          opacity: _transcript.isNotEmpty ? 1.0 : 0.0,
+          opacity: 1.0,
           duration: const Duration(milliseconds: 250),
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _tapDone,
-              icon: const Icon(Icons.check_rounded, size: 18),
-              label: const Text('Process this'),
+              icon: const Icon(Icons.stop_rounded, size: 18),
+              label: const Text('Stop & Process'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _accentColor,
                 foregroundColor: Colors.white,

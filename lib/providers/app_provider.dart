@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
@@ -12,8 +13,10 @@ import '../models/log_entry_model.dart';
 import '../models/todo_folder_model.dart';
 import '../models/todo_model.dart';
 import '../models/expense_model.dart';
+import '../models/journal_entry_model.dart';
 import '../models/sip_model.dart';
 import '../models/stock_model.dart';
+import '../models/daily_checklist_item_model.dart';
 import '../services/notification_service.dart';
 import '../services/widget_sync_service.dart';
 import '../services/calendar_sync_service.dart';
@@ -25,11 +28,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<LogEntry> _logs = [];
   List<TodoFolderModel> _todoFolders = [];
   List<ExpenseModel> _expenses = [];
+  List<JournalEntryModel> _journalEntries = [];
   List<FixedExpenseTemplate> _fixedTemplates = [];
   List<SipModel> _sips = [];
   List<StockModel> _stocks = [];
   // "YYYY-MM" of the last month fixed expenses were applied
   String _lastFixedAppliedMonth = '';
+
+  List<DailyChecklistItemModel> _dailyChecklistItems = [];
+  /// yyyy-MM-dd -> item ids checked that calendar day
+  final Map<String, List<String>> _dailyChecklistChecksByDate = {};
 
   bool _isAwake = true;
   // When the user toggled to sleep — used to backfill all missed slots on wake.
@@ -44,6 +52,14 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _calendarSyncEnabled = false;
   bool get calendarSyncEnabled => _calendarSyncEnabled;
 
+  /// Selected calendar is read-only (import only; cannot write app tasks back).
+  bool _calendarReadOnly = false;
+  bool get calendarReadOnly => _calendarReadOnly;
+
+  /// Writable calendar: both import and push (app tasks → device calendar).
+  bool get mirrorsTasksToCalendar =>
+      _calendarSyncEnabled && !_calendarReadOnly;
+
   // Tracks whether the last notification was answered (for auto-continue)
   DateTime? _notificationShownAt;
 
@@ -53,9 +69,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<LogEntry> get logs => _logs;
   List<TodoFolderModel> get todoFolders => _todoFolders;
   List<ExpenseModel> get expenses => _expenses;
+  List<JournalEntryModel> get journalEntries => _journalEntries;
   List<FixedExpenseTemplate> get fixedTemplates => _fixedTemplates;
   List<SipModel> get sips => _sips;
   List<StockModel> get stocks => _stocks;
+
+  List<DailyChecklistItemModel> get dailyChecklistItems {
+    final copy = List<DailyChecklistItemModel>.from(_dailyChecklistItems);
+    copy.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    return copy;
+  }
   bool get isAwake => _isAwake;
   int get logIntervalMinutes => _logIntervalMinutes;
   bool get isPromptOwed => _isPromptOwed;
@@ -135,6 +158,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _calendarSyncEnabled = prefs.getBool('calendarSyncEnabled') ?? false;
+    _calendarReadOnly = prefs.getBool('calendarReadOnly') ?? false;
     final calId = prefs.getString('calendarId');
     if (calId != null) CalendarSyncService.instance.setCalendarId(calId);
 
@@ -184,6 +208,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await prefs.setInt('logIntervalMinutes', _logIntervalMinutes);
     await prefs.setInt('themeMode', _themeMode.index);
     await prefs.setBool('calendarSyncEnabled', _calendarSyncEnabled);
+    await prefs.setBool('calendarReadOnly', _calendarReadOnly);
     final calId = CalendarSyncService.instance.calendarId;
     if (calId != null) {
       await prefs.setString('calendarId', calId);
@@ -235,6 +260,12 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
               .toList();
           _expenses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         }
+        if (data['journals'] != null) {
+          _journalEntries = (data['journals'] as List)
+              .map((e) => JournalEntryModel.fromJson(e))
+              .toList();
+          _journalEntries.sort((a, b) => b.date.compareTo(a.date));
+        }
 
         if (data['fixed_templates'] != null) {
           _fixedTemplates = (data['fixed_templates'] as List)
@@ -259,6 +290,26 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         _applyFixedExpensesIfNeeded();
 
         // Data Migration logic
+        if (data['daily_checklist_items'] != null) {
+          _dailyChecklistItems = (data['daily_checklist_items'] as List)
+              .map((e) => DailyChecklistItemModel.fromJson(
+                    Map<String, dynamic>.from(e as Map),
+                  ))
+              .toList();
+        }
+        if (data['daily_checklist_checks'] != null) {
+          _dailyChecklistChecksByDate.clear();
+          final raw = data['daily_checklist_checks'] as Map<String, dynamic>;
+          for (final e in raw.entries) {
+            final ids = (e.value as List)
+                .map((x) => x.toString())
+                .toList(growable: false);
+            if (ids.isNotEmpty) {
+              _dailyChecklistChecksByDate[e.key] = ids;
+            }
+          }
+        }
+
         if (data['todo_folders'] != null) {
           _todoFolders = (data['todo_folders'] as List)
               .map((e) => TodoFolderModel.fromJson(e))
@@ -354,10 +405,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
         'expenses': _expenses.map((e) => e.toJson()).toList(),
+        'journals': _journalEntries.map((e) => e.toJson()).toList(),
         'fixed_templates': _fixedTemplates.map((e) => e.toJson()).toList(),
         'sips': _sips.map((e) => e.toJson()).toList(),
         'stocks': _stocks.map((e) => e.toJson()).toList(),
         'last_fixed_applied_month': _lastFixedAppliedMonth,
+        'daily_checklist_items':
+            _dailyChecklistItems.map((e) => e.toJson()).toList(),
+        'daily_checklist_checks': _dailyChecklistChecksByDate.map(
+          (k, v) => MapEntry(k, v),
+        ),
       };
       await file.writeAsString(json.encode(data));
 
@@ -784,38 +841,95 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── Calendar sync public API ────────────────────────────────────────────────
 
-  /// Enables/disables calendar sync. On enable: requests permission and lets
-  /// the caller pick a calendar via [CalendarSyncService.getWritableCalendars].
-  Future<bool> setCalendarSync(bool enabled, {String? calendarId}) async {
-    if (enabled) {
-      final granted = await CalendarSyncService.instance.requestPermission();
-      if (!granted) return false;
-      if (calendarId != null) {
-        CalendarSyncService.instance.setCalendarId(calendarId);
-      }
+  /// Links a device calendar: imports its events into Schedule; if the calendar
+  /// is writable, app tasks are also written back (same as legacy “sync”).
+  ///
+  /// Returns imported event count on success, `-1` if permission denied when
+  /// enabling, or `0` when disabling.
+  Future<int> setCalendarSync(
+    bool enabled, {
+    String? calendarId,
+    bool calendarReadOnly = false,
+  }) async {
+    if (!enabled) {
+      _calendarSyncEnabled = false;
+      _calendarReadOnly = false;
+      CalendarSyncService.instance.setCalendarId(null);
+      notifyListeners();
+      await saveSettings();
+      return 0;
     }
-    _calendarSyncEnabled = enabled;
+    final granted = await CalendarSyncService.instance.requestPermission();
+    if (!granted) return -1;
+    if (calendarId != null) {
+      CalendarSyncService.instance.setCalendarId(calendarId);
+    }
+    _calendarReadOnly = calendarReadOnly;
+    _calendarSyncEnabled = true;
     notifyListeners();
     await saveSettings();
-    if (enabled) {
-      // Full sync on enable
-      final idMap = await CalendarSyncService.instance.fullSync(_tasks);
-      for (final entry in idMap.entries) {
-        final idx = _tasks.indexWhere((t) => t.id == entry.key);
-        if (idx != -1) {
-          _tasks[idx] = _tasks[idx].copyWith(calendarEventId: entry.value);
-        }
+    final imported = await importTasksFromPhoneCalendar();
+    if (mirrorsTasksToCalendar) {
+      await _pushAllTasksToCalendar();
+    }
+    return imported;
+  }
+
+  Future<void> _pushAllTasksToCalendar() async {
+    final idMap = await CalendarSyncService.instance.fullSync(_tasks);
+    for (final entry in idMap.entries) {
+      final idx = _tasks.indexWhere((t) => t.id == entry.key);
+      if (idx != -1) {
+        _tasks[idx] = _tasks[idx].copyWith(calendarEventId: entry.value);
       }
+    }
+    await _saveData();
+    notifyListeners();
+  }
+
+  /// Imports events from selected phone calendar into app schedule.
+  /// Returns number of newly imported tasks.
+  Future<int> importTasksFromPhoneCalendar({
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final imported = await CalendarSyncService.instance.importEventsAsTasks(
+      from: from,
+      to: to,
+    );
+    if (imported.isEmpty) return 0;
+
+    int added = 0;
+    for (final t in imported) {
+      final exists = _tasks.any((existing) {
+        if (t.calendarEventId != null &&
+            existing.calendarEventId != null &&
+            existing.calendarEventId == t.calendarEventId) {
+          return true;
+        }
+        return existing.startTime == t.startTime &&
+            existing.endTime == t.endTime &&
+            existing.title == t.title;
+      });
+      if (!exists) {
+        _tasks.add(t);
+        added++;
+      }
+    }
+
+    if (added > 0) {
+      _tasks.sort((a, b) => a.startTime.compareTo(b.startTime));
+      notifyListeners();
       await _saveData();
     }
-    return true;
+    return added;
   }
 
   // ── Task mutations (with calendar sync) ─────────────────────────────────────
 
   Future<void> addTask(TaskModel task) async {
     var taskToAdd = task;
-    if (_calendarSyncEnabled) {
+    if (mirrorsTasksToCalendar) {
       final eventId = await CalendarSyncService.instance.syncTask(task);
       if (eventId != null) taskToAdd = task.copyWith(calendarEventId: eventId);
     }
@@ -826,7 +940,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> removeTask(String id) async {
-    if (_calendarSyncEnabled) {
+    if (mirrorsTasksToCalendar) {
       final task = _tasks.firstWhere(
         (t) => t.id == id,
         orElse: () => _tasks.first,
@@ -844,7 +958,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     final index = _tasks.indexWhere((t) => t.id == updatedTask.id);
     if (index != -1) {
       var taskToUpdate = updatedTask;
-      if (_calendarSyncEnabled) {
+      if (mirrorsTasksToCalendar) {
         final eventId = await CalendarSyncService.instance.syncTask(
           updatedTask,
         );
@@ -870,7 +984,7 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           startTime: task.startTime.add(shiftDuration),
           endTime: task.endTime.add(shiftDuration),
         );
-        if (_calendarSyncEnabled) {
+        if (mirrorsTasksToCalendar) {
           final eventId = await CalendarSyncService.instance.syncTask(shifted);
           if (eventId != null) {
             shifted = shifted.copyWith(calendarEventId: eventId);
@@ -886,6 +1000,110 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       await _saveData();
     }
+  }
+
+  // ─── Daily checklist (resets completion per calendar day) ───────────────────
+
+  static String _dailyChecklistDateKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  bool isDailyChecklistItemChecked(String itemId, DateTime date) {
+    final key = _dailyChecklistDateKey(date);
+    return _dailyChecklistChecksByDate[key]?.contains(itemId) ?? false;
+  }
+
+  Future<void> toggleDailyChecklistItem(String itemId, DateTime date) async {
+    final key = _dailyChecklistDateKey(date);
+    final list = List<String>.from(_dailyChecklistChecksByDate[key] ?? []);
+    if (list.contains(itemId)) {
+      list.remove(itemId);
+    } else {
+      list.add(itemId);
+    }
+    if (list.isEmpty) {
+      _dailyChecklistChecksByDate.remove(key);
+    } else {
+      _dailyChecklistChecksByDate[key] = list;
+    }
+    notifyListeners();
+    await _saveData();
+  }
+
+  ({int checked, int total}) dailyChecklistProgress(DateTime date) {
+    final total = _dailyChecklistItems.length;
+    if (total == 0) return (checked: 0, total: 0);
+    final key = _dailyChecklistDateKey(date);
+    final done = _dailyChecklistChecksByDate[key]?.toSet() ?? {};
+    var n = 0;
+    for (final i in _dailyChecklistItems) {
+      if (done.contains(i.id)) n++;
+    }
+    return (checked: n, total: total);
+  }
+
+  Future<void> addDailyChecklistItem(String title) async {
+    final t = title.trim();
+    if (t.isEmpty) return;
+    final maxOrder = _dailyChecklistItems.isEmpty
+        ? -1
+        : _dailyChecklistItems.map((e) => e.orderIndex).reduce(math.max);
+    _dailyChecklistItems.add(
+      DailyChecklistItemModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: t,
+        orderIndex: maxOrder + 1,
+      ),
+    );
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> updateDailyChecklistItemTitle(String id, String title) async {
+    final t = title.trim();
+    if (t.isEmpty) return;
+    final idx = _dailyChecklistItems.indexWhere((e) => e.id == id);
+    if (idx == -1) return;
+    _dailyChecklistItems[idx] =
+        _dailyChecklistItems[idx].copyWith(title: t);
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> removeDailyChecklistItem(String id) async {
+    _dailyChecklistItems.removeWhere((e) => e.id == id);
+    for (final k in _dailyChecklistChecksByDate.keys.toList()) {
+      final list = List<String>.from(_dailyChecklistChecksByDate[k] ?? []);
+      list.remove(id);
+      if (list.isEmpty) {
+        _dailyChecklistChecksByDate.remove(k);
+      } else {
+        _dailyChecklistChecksByDate[k] = list;
+      }
+    }
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> reorderDailyChecklistItems(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final sorted = List<DailyChecklistItemModel>.from(_dailyChecklistItems)
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    if (oldIndex < 0 ||
+        oldIndex >= sorted.length ||
+        newIndex < 0 ||
+        newIndex >= sorted.length) {
+      return;
+    }
+    final item = sorted.removeAt(oldIndex);
+    sorted.insert(newIndex, item);
+    for (var i = 0; i < sorted.length; i++) {
+      sorted[i] = sorted[i].copyWith(orderIndex: i);
+    }
+    _dailyChecklistItems
+      ..clear()
+      ..addAll(sorted);
+    notifyListeners();
+    await _saveData();
   }
 
   // ─── AI Todo Folders ────────────────────────────────────────────────────────
@@ -1220,6 +1438,57 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _saveData();
   }
 
+  // ─── Journals ────────────────────────────────────────────────────────────────
+
+  JournalEntryModel? getJournalForDate(DateTime date) {
+    for (final entry in _journalEntries) {
+      if (entry.date.year == date.year &&
+          entry.date.month == date.month &&
+          entry.date.day == date.day) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  Future<void> upsertJournal({
+    required DateTime date,
+    required String content,
+  }) async {
+    final normalized = DateTime(date.year, date.month, date.day);
+    final idx = _journalEntries.indexWhere(
+      (j) =>
+          j.date.year == normalized.year &&
+          j.date.month == normalized.month &&
+          j.date.day == normalized.day,
+    );
+    final now = DateTime.now();
+    if (idx == -1) {
+      _journalEntries.add(
+        JournalEntryModel(
+          id: '${normalized.millisecondsSinceEpoch}_jrnl',
+          date: normalized,
+          content: content,
+          updatedAt: now,
+        ),
+      );
+    } else {
+      _journalEntries[idx] = _journalEntries[idx].copyWith(
+        content: content,
+        updatedAt: now,
+      );
+    }
+    _journalEntries.sort((a, b) => b.date.compareTo(a.date));
+    notifyListeners();
+    await _saveData();
+  }
+
+  Future<void> deleteJournalById(String id) async {
+    _journalEntries.removeWhere((j) => j.id == id);
+    notifyListeners();
+    await _saveData();
+  }
+
   // ─── Expenses ────────────────────────────────────────────────────────────────
 
   Future<void> addExpense(ExpenseModel expense) async {
@@ -1295,10 +1564,16 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
         'logs': _logs.map((e) => e.toJson()).toList(),
         'todo_folders': _todoFolders.map((e) => e.toJson()).toList(),
         'expenses': _expenses.map((e) => e.toJson()).toList(),
+        'journals': _journalEntries.map((e) => e.toJson()).toList(),
         'fixed_templates': _fixedTemplates.map((e) => e.toJson()).toList(),
         'sips': _sips.map((e) => e.toJson()).toList(),
         'stocks': _stocks.map((e) => e.toJson()).toList(),
         'last_fixed_applied_month': _lastFixedAppliedMonth,
+        'daily_checklist_items':
+            _dailyChecklistItems.map((e) => e.toJson()).toList(),
+        'daily_checklist_checks': _dailyChecklistChecksByDate.map(
+          (k, v) => MapEntry(k, v),
+        ),
       };
 
       // Some platforms may return null immediately if save-file picker is unsupported.
@@ -1448,6 +1723,42 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
             }
           }
         }
+        if (data['journals'] != null) {
+          final importedJournals = (data['journals'] as List).map(
+            (e) => JournalEntryModel.fromJson(e),
+          );
+          for (final j in importedJournals) {
+            final byId = _journalEntries.indexWhere(
+              (existing) => existing.id == j.id,
+            );
+            if (byId != -1) {
+              // Keep the newer edit if same entry id exists.
+              if (j.updatedAt.isAfter(_journalEntries[byId].updatedAt)) {
+                _journalEntries[byId] = j;
+                changed = true;
+              }
+              continue;
+            }
+
+            final byDate = _journalEntries.indexWhere(
+              (existing) =>
+                  existing.date.year == j.date.year &&
+                  existing.date.month == j.date.month &&
+                  existing.date.day == j.date.day,
+            );
+            if (byDate != -1) {
+              // Date-wise journals should be unique per day.
+              // If importing the same day from another device, keep latest.
+              if (j.updatedAt.isAfter(_journalEntries[byDate].updatedAt)) {
+                _journalEntries[byDate] = j;
+                changed = true;
+              }
+            } else {
+              _journalEntries.add(j);
+              changed = true;
+            }
+          }
+        }
 
         if (data['fixed_templates'] != null) {
           final importedTemplates = (data['fixed_templates'] as List).map(
@@ -1485,10 +1796,44 @@ class AppProvider extends ChangeNotifier with WidgetsBindingObserver {
           }
         }
 
+        if (data['daily_checklist_items'] != null) {
+          final importedDaily = (data['daily_checklist_items'] as List)
+              .map(
+                (e) => DailyChecklistItemModel.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
+              .toList();
+          for (final item in importedDaily) {
+            if (!_dailyChecklistItems.any((x) => x.id == item.id)) {
+              _dailyChecklistItems.add(item);
+              changed = true;
+            }
+          }
+          _dailyChecklistItems.sort(
+            (a, b) => a.orderIndex.compareTo(b.orderIndex),
+          );
+        }
+        if (data['daily_checklist_checks'] != null) {
+          final raw = data['daily_checklist_checks'] as Map<String, dynamic>;
+          for (final e in raw.entries) {
+            final ids = (e.value as List).map((x) => x.toString()).toList();
+            final merged = <String>{
+              ...?_dailyChecklistChecksByDate[e.key],
+              ...ids,
+            };
+            if (merged.isNotEmpty) {
+              _dailyChecklistChecksByDate[e.key] = merged.toList();
+              changed = true;
+            }
+          }
+        }
+
         if (changed) {
           _tasks.sort((a, b) => a.startTime.compareTo(b.startTime));
           _logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
           _expenses.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          _journalEntries.sort((a, b) => b.date.compareTo(a.date));
           for (int i = 0; i < _todoFolders.length; i++) {
             final sortedTodos = List<TodoModel>.from(_todoFolders[i].todos)
               ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));

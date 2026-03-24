@@ -28,7 +28,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
       'color': AppTheme.accentPrimary,
       'title': 'Schedule Your Day',
       'body':
-          'Click on the Tasks icon and simply tap the grid to schedule an activity for today. Keep track of what matters.',
+          'Click on the Schedule icon and simply tap the grid to schedule an activity for today. Keep track of what matters.',
     },
     {
       'icon': Icons.analytics_rounded,
