@@ -58,6 +58,23 @@ A dedicated **Expenses** tab (wallet icon in the bottom nav) lets you track ever
 <br>
 <hr>
 
+### 📈 Investment & Wealth Tracking
+A fully integrated **Investments** tab allows you to track both your Mutual Funds (SIPs) and Stocks seamlessly in one place.
+- **Dynamic Stock Search:** Search for real global stocks and tickers live using the newly integrated Yahoo Finance lookup.
+- **Combined Portfolio Analytics:** View your complete net worth broken down into beautiful gradient charts showing the exact split between your systematic SIPs and one-time stock buys.
+- **Easy Logging:** Quickly log new SIPs or stock purchases with dedicated, streamlined modal sheets.
+
+<br>
+<hr>
+
+### 📔 Immersive Daily Journal
+Take a moment to reflect on your day with a built-in digital diary.
+- **Beautiful Interface:** Access your journal instantly via the prominent, tilted gradient card natively sitting on your home screen.
+- **Historical Memory:** Keep a chronological record of your daily thoughts, ideas, and accomplishments cleanly integrated alongside your time logs and expenses.
+
+<br>
+<hr>
+
 ## 🚀 Features
 
 <img src="screenshots/Tasks%20Page.jpg" width="220" align="left" alt="Tasks Page" style="margin-right: 20px;">
